@@ -22,6 +22,7 @@ from src.ai.model import AIModel
 from src.learning.learning_engine import LearningEngine, TradeResult
 from src.database.repository import DatabaseRepository
 from src.telegram.bot import TelegramBot
+from src.telegram.command_handler import TelegramCommandHandler
 
 # Configure logging
 logging.basicConfig(
@@ -107,10 +108,21 @@ class CoreBrainBot:
             enabled=settings.telegram.ENABLED
         )
         
+        # Telegram command handler (interactive commands)
+        self.telegram_commands = TelegramCommandHandler(
+            token=settings.telegram.TOKEN,
+            chat_id=settings.telegram.CHAT_ID,
+            db_repository=self.db,
+            feature_engine=self.features,
+            regime_detector=self.regime_detector,
+            enabled=settings.telegram.ENABLED
+        )
+        
         # State
         self._running = False
         self._last_regime = None
         self._current_date = None
+        self._command_task = None
     
     async def start(self):
         """Start the bot"""
@@ -124,11 +136,15 @@ class CoreBrainBot:
         # Connect to Binance
         binance_task = asyncio.create_task(self.binance.connect())
         
+        # Start Telegram command handler
+        self._command_task = asyncio.create_task(self.telegram_commands.start_polling())
+        logger.info("✅ Telegram command handler started")
+        
         # Wait for initial data
         await asyncio.sleep(5)
         
         # Send startup notification
-        await self.telegram.send_message("🤖 Core Brain Bot started!")
+        await self.telegram.send_message("🤖 Core Brain Bot started!\n\nUse /help to see available commands.")
         
         try:
             await self._main_loop()
@@ -143,6 +159,15 @@ class CoreBrainBot:
         """Stop the bot"""
         logger.info("Stopping Core Brain Bot...")
         self._running = False
+        
+        # Stop command handler
+        await self.telegram_commands.close()
+        if self._command_task:
+            self._command_task.cancel()
+            try:
+                await self._command_task
+            except asyncio.CancelledError:
+                pass
         
         await self.binance.disconnect()
         await self.features.close()

@@ -21,6 +21,7 @@ from src.daily.manager import DailyStateManager
 from src.iq.calculator import BotIQCalculator
 from src.reports.generator import ReportGenerator
 from src.telegram.bot import TelegramBot
+from src.telegram.command_handler import TelegramCommandHandler
 
 # Configure logging
 logging.basicConfig(
@@ -91,10 +92,19 @@ class HeartbeatBot:
             enabled=settings.telegram.ENABLED,
         )
 
+        # Telegram command handler (interactive commands)
+        self.telegram_commands = TelegramCommandHandler(
+            token=settings.telegram.TOKEN,
+            chat_id=settings.telegram.CHAT_ID,
+            db_repository=self.db,
+            enabled=settings.telegram.ENABLED,
+        )
+
         # State
         self._running = False
         self._last_report_date = None
         self._last_weekly_report = None
+        self._command_task = None
 
     async def start(self):
         """Start the bot"""
@@ -104,8 +114,12 @@ class HeartbeatBot:
         # Ensure logs directory exists
         Path("logs").mkdir(exist_ok=True)
 
+        # Start Telegram command handler
+        self._command_task = asyncio.create_task(self.telegram_commands.start_polling())
+        logger.info("✅ Telegram command handler started")
+
         # Send startup notification
-        await self.telegram.send_message("🔔 Heartbeat Monitor started!")
+        await self.telegram.send_message("🔔 Heartbeat Monitor started!\n\nUse /help to see available commands.")
 
         try:
             await self._main_loop()
@@ -120,6 +134,15 @@ class HeartbeatBot:
         """Stop the bot"""
         logger.info("Stopping Heartbeat Monitor Bot...")
         self._running = False
+
+        # Stop command handler
+        await self.telegram_commands.close()
+        if self._command_task:
+            self._command_task.cancel()
+            try:
+                await self._command_task
+            except asyncio.CancelledError:
+                pass
 
         await self.signal_tracker.close()
         await self.telegram.close()
