@@ -1,0 +1,71 @@
+name: Deploy to Vultr
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  deploy:
+    name: Deploy BTC Trading Bot to Vultr
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Deploy to Vultr Server
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.VULTR_HOST }}
+          username: ${{ secrets.VULTR_USERNAME }}
+          key: ${{ secrets.VULTR_SSH_KEY }}
+          port: ${{ secrets.VULTR_SSH_PORT || 22 }}
+          script: |
+            echo "🚀 Starting deployment..."
+            
+            # Navigate to project directory
+            cd ${{ secrets.DEPLOY_PATH || '/root/bot_featured' }}
+            
+            # Pull latest code
+            echo "📥 Pulling latest code from GitHub..."
+            git fetch origin
+            git reset --hard origin/main
+            
+            # Check if docker-compose is running
+            echo "🔍 Checking running containers..."
+            docker-compose ps
+            
+            # Pull latest images if needed
+            echo "🐳 Pulling Docker images..."
+            docker-compose pull
+            
+            # Restart services with new code
+            echo "🔄 Restarting services..."
+            docker-compose down
+            docker-compose up -d --build
+            
+            # Wait for containers to be healthy
+            echo "⏳ Waiting for containers to start..."
+            sleep 10
+            
+            # Check status
+            echo "✅ Checking container status..."
+            docker-compose ps
+            
+            # Show recent logs
+            echo "📋 Recent logs:"
+            docker-compose logs --tail=20
+            
+            echo "🎉 Deployment completed successfully!"
+      
+      - name: Notify Deployment Status
+        if: always()
+        run: |
+          if [ ${{ job.status }} == 'success' ]; then
+            echo "✅ Deployment successful!"
+          else
+            echo "❌ Deployment failed!"
+          fi
+
