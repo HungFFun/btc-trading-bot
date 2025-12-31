@@ -216,6 +216,13 @@ def init_database(database_url: str, use_sqlite: bool = True, sqlite_path: str =
         # Ensure directory exists
         os.makedirs(os.path.dirname(sqlite_path), exist_ok=True)
         database_url = f"sqlite:///{sqlite_path}"
+    else:
+        # If not using SQLite, ensure we have a valid DATABASE_URL
+        if not database_url or database_url.strip() == "":
+            database_url = os.getenv(
+                "DATABASE_URL",
+                "postgresql://btc_bot:secure_password@localhost:5432/btc_trading_bot"
+            )
     
     engine = create_engine(database_url, echo=False)
     Base.metadata.create_all(engine)
