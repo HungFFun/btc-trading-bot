@@ -1,5 +1,10 @@
 # BTC Trading Bot v5.0
 
+[![Deploy to Vultr](https://github.com/HungFFun/btc-trading-bot/actions/workflows/deploy.yml/badge.svg)](https://github.com/HungFFun/btc-trading-bot/actions/workflows/deploy.yml)
+![Version](https://img.shields.io/badge/version-1.1.0-blue)
+![Python](https://img.shields.io/badge/python-3.13-blue)
+![Docker](https://img.shields.io/badge/docker-ready-green)
+
 ## 2 BOT Architecture - Daily Target $10
 
 **Vốn:** $500  
@@ -155,15 +160,53 @@ Chỉ ~10-15% signals vượt qua tất cả gates.
 ## 📱 Telegram Bots
 
 ### @CoreBrainBot (Bot 1)
+
+**Notifications:**
 - 🔔 New signals
 - 📊 Features & Regime
 - 💡 Learning insights
 
+**Interactive Commands:**
+- `/status` - Current bot status and market overview
+- `/daily` - Today's trading state (PnL, trades, win rate)
+- `/regime` - Market regime analysis
+- `/help` - Show available commands
+
 ### @HeartbeatBot (Bot 2)
+
+**Notifications:**
 - ✅/❌ Trade results
 - 🎯 Target/Stop alerts
 - 📊 Daily/Weekly reports
 - 🧠 IQ monitoring
+
+**Interactive Commands:**
+- `/health` - Bot 1 health status
+- `/today` - Today's trading results & statistics
+- `/help` - Show available commands
+
+## 🚀 CI/CD Deployment
+
+### Auto-Deploy to Vultr with GitHub Actions
+
+Every push to `main` branch automatically deploys to your Vultr server!
+
+**Setup:**
+1. See [.github/DEPLOY_SETUP.md](.github/DEPLOY_SETUP.md) for detailed instructions
+2. Add GitHub Secrets (VULTR_HOST, VULTR_SSH_KEY, etc.)
+3. Push code → Auto deploy! 🎉
+
+**Features:**
+- ✅ Automatic deployment on push
+- ✅ Manual trigger available
+- ✅ Container health checks
+- ✅ Deployment logs & monitoring
+- ✅ Zero-downtime deployment
+
+**Workflow:**
+```
+Push to main → GitHub Actions → SSH to Vultr → Pull & Restart → Done!
+```
 
 ## ⚙️ Environment Variables
 
@@ -200,7 +243,17 @@ Use at your own risk and never trade with money you can't afford to lose.
 
 ---
 
-**Version:** 5.0 Final  
+## 📚 Documentation
+
+- [Telegram Commands Guide](TELEGRAM_COMMANDS.md) - Interactive command usage
+- [CI/CD Setup Guide](.github/DEPLOY_SETUP.md) - GitHub Actions deployment
+- [Docker Compose](docker-compose.yml) - Container orchestration
+- [Database Schema](init-db.sql) - PostgreSQL setup
+
+---
+
+**Version:** 1.1.0  
 **Architecture:** 2 BOT (Core Brain + Heartbeat Monitor)  
 **Target:** $500 → $10/day  
+**Deployment:** Auto-deploy via GitHub Actions  
 
