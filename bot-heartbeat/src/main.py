@@ -47,6 +47,7 @@ class HeartbeatBot:
     def __init__(self):
         # Initialize database (same as Bot 1)
         self.db = DatabaseRepository(
+            database_url=settings.database.DATABASE_URL,
             use_sqlite=settings.database.USE_SQLITE,
             sqlite_path=settings.database.SQLITE_PATH,
         )
