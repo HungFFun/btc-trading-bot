@@ -1,0 +1,80 @@
+# BTC Trading Bot v5.0 - Docker Compose
+# 2 BOT Architecture: Core Brain + Heartbeat Monitor
+
+version: '3.8'
+
+services:
+  # PostgreSQL Database (shared between both bots)
+  postgres:
+    image: postgres:15-alpine
+    container_name: btc_bot_postgres
+    environment:
+      POSTGRES_USER: btc_bot
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-secure_password}
+      POSTGRES_DB: btc_trading_bot
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U btc_bot -d btc_trading_bot"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: always
+    networks:
+      - btc_bot_network
+
+  # Bot 1: Core Brain (Trading Logic)
+  core-brain:
+    build:
+      context: ./bot-core-brain
+      dockerfile: Dockerfile
+    container_name: btc_bot_core_brain
+    env_file:
+      - ./bot-core-brain/.env
+    environment:
+      - DATABASE_URL=postgresql://btc_bot:${DB_PASSWORD:-secure_password}@postgres:5432/btc_trading_bot
+      - USE_SQLITE=false
+    volumes:
+      - ./bot-core-brain/logs:/app/logs
+      - ./bot-core-brain/models:/app/models
+      - ./bot-core-brain/data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: always
+    networks:
+      - btc_bot_network
+
+  # Bot 2: Heartbeat Monitor
+  heartbeat:
+    build:
+      context: ./bot-heartbeat
+      dockerfile: Dockerfile
+    container_name: btc_bot_heartbeat
+    env_file:
+      - ./bot-heartbeat/.env
+    environment:
+      - DATABASE_URL=postgresql://btc_bot:${DB_PASSWORD:-secure_password}@postgres:5432/btc_trading_bot
+      - USE_SQLITE=false
+    volumes:
+      - ./bot-heartbeat/logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      core-brain:
+        condition: service_started
+    restart: always
+    networks:
+      - btc_bot_network
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  btc_bot_network:
+    driver: bridge
+

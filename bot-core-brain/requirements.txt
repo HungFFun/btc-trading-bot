@@ -1,0 +1,30 @@
+# Bot 1: Core Brain - Dependencies
+# BTC Trading Bot v5.0
+
+# Core
+python-dotenv>=1.0.0
+numpy>=1.24.0
+pandas>=2.0.0
+
+# Async
+aiohttp>=3.8.0
+websockets>=11.0
+
+# Database
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.0  # PostgreSQL (optional)
+
+# Machine Learning (optional but recommended)
+scikit-learn>=1.3.0
+xgboost>=1.7.0
+lightgbm>=4.0.0
+
+# Technical Analysis
+ta-lib>=0.4.25  # Requires system TA-Lib
+# OR use pure Python alternative:
+# pandas-ta>=0.3.14
+
+# Utilities
+python-dateutil>=2.8.0
+pytz>=2023.3
+

@@ -1,0 +1,18 @@
+# Bot 2: Heartbeat Monitor - Dependencies
+# BTC Trading Bot v5.0
+
+# Core
+python-dotenv>=1.0.0
+numpy>=1.24.0
+
+# Async
+aiohttp>=3.8.0
+
+# Database
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.0  # PostgreSQL (optional)
+
+# Utilities
+python-dateutil>=2.8.0
+pytz>=2023.3
+
