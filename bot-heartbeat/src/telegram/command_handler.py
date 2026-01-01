@@ -55,16 +55,20 @@ class TelegramCommandHandler:
                 # DO NOT use json.dumps here - aiohttp's json= handles serialization
                 data["reply_markup"] = reply_markup
 
-            logger.info(f"Sending message to Telegram (chat_id={self.chat_id}): {text[:50]}...")
+            logger.info(
+                f"Sending message to Telegram (chat_id={self.chat_id}): {text[:50]}..."
+            )
             logger.info(f"Data being sent: {data}")
-            
+
             async with session.post(url, json=data) as response:
                 response_text = await response.text()
                 if response.status == 200:
                     logger.info("Message sent successfully")
                     return True
                 else:
-                    logger.error(f"Telegram send error (status={response.status}): {response_text}")
+                    logger.error(
+                        f"Telegram send error (status={response.status}): {response_text}"
+                    )
                     return False
         except Exception as e:
             logger.error(f"Failed to send message: {e}")
@@ -118,13 +122,15 @@ class TelegramCommandHandler:
     async def handle_command(self, command: str, message_data: dict):
         """Route commands to appropriate handlers"""
         chat_id = str(message_data.get("chat", {}).get("id", ""))
-        
+
         logger.info(f"Handling command: {command}")
         logger.info(f"Message chat_id: {chat_id}, Configured chat_id: {self.chat_id}")
 
         # Only respond to configured chat_id
         if chat_id != str(self.chat_id):
-            logger.warning(f"Ignoring command from unauthorized chat: {chat_id} (expected: {self.chat_id})")
+            logger.warning(
+                f"Ignoring command from unauthorized chat: {chat_id} (expected: {self.chat_id})"
+            )
             return
 
         command = command.lower().strip().split("@")[0]  # Remove @botname if present
@@ -450,7 +456,7 @@ class TelegramCommandHandler:
         logger.info(f"Enabled: {self.enabled}")
         logger.info(f"Token: {self.token[:10]}..." if self.token else "Token: None")
         logger.info(f"Chat ID: {self.chat_id}")
-        
+
         if not self.enabled or not self.token:
             logger.info("Command handler disabled or not configured")
             return

@@ -1,6 +1,13 @@
 """
 Telegram Bot 1 - Core Brain Notifications
 @CoreBrainBot
+
+OPTIMIZED v5.1 - Chỉ gửi thông báo quan trọng:
+1. 🔔 NEW SIGNAL - Khi có tín hiệu trading
+2. 🔄 REGIME CHANGE - Khi market regime thay đổi
+3. ⚠️ ERROR - Khi có lỗi nghiêm trọng
+
+Các thông báo khác (daily start, limits, reports) do Bot 2 đảm nhận.
 """
 import asyncio
 import logging
@@ -20,6 +27,9 @@ class TelegramBot:
         self.enabled = enabled
         self.base_url = f"https://api.telegram.org/bot{token}"
         self._session: Optional[aiohttp.ClientSession] = None
+        
+        # Log initialization
+        logger.info(f"TelegramBot initialized: enabled={enabled}, chat_id={chat_id}")
     
     async def _get_session(self) -> aiohttp.ClientSession:
         if self._session is None or self._session.closed:
@@ -32,8 +42,12 @@ class TelegramBot:
     
     async def send_message(self, text: str, parse_mode: str = "HTML") -> bool:
         """Send a message to the chat"""
-        if not self.enabled or not self.token or not self.chat_id:
-            logger.debug("Telegram disabled or not configured")
+        if not self.enabled:
+            logger.warning("Telegram is DISABLED in settings")
+            return False
+        
+        if not self.token or not self.chat_id:
+            logger.error(f"Telegram not configured: token={bool(self.token)}, chat_id={bool(self.chat_id)}")
             return False
         
         try:
@@ -45,151 +59,132 @@ class TelegramBot:
                 "parse_mode": parse_mode
             }
             
+            logger.info(f"📤 Sending Telegram message: {text[:80]}...")
+            
             async with session.post(url, json=data) as response:
+                response_text = await response.text()
                 if response.status == 200:
+                    logger.info("✅ Message sent successfully")
                     return True
                 else:
-                    error = await response.text()
-                    logger.error(f"Telegram error: {error}")
+                    logger.error(f"❌ Telegram error (status={response.status}): {response_text}")
                     return False
         except Exception as e:
-            logger.error(f"Failed to send Telegram message: {e}")
+            logger.error(f"❌ Failed to send Telegram message: {e}")
             return False
     
+    # =====================================================
+    # THÔNG BÁO CHÍNH - Chỉ giữ 3 loại quan trọng
+    # =====================================================
+    
     async def send_signal_alert(self, signal, daily_state) -> bool:
-        """Send new signal alert"""
-        direction_emoji = "🟢" if signal.direction.value == "LONG" else "🔴"
+        """
+        🔔 NEW SIGNAL - Thông báo khi có tín hiệu giao dịch mới
+        Đây là thông báo quan trọng nhất của Bot 1
+        """
+        logger.info(f"📣 Preparing signal alert for {signal.signal_id}")
         
-        message = f"""
-🔔 <b>NEW TRADE</b>
-═══════════════
+        try:
+            direction_emoji = "🟢" if signal.direction.value == "LONG" else "🔴"
+            
+            # Tính toán risk/reward
+            risk_percent = abs((signal.stop_loss - signal.entry_price) / signal.entry_price * 100)
+            reward_percent = abs((signal.take_profit - signal.entry_price) / signal.entry_price * 100)
+            
+            message = f"""
+🔔 <b>NEW TRADE SIGNAL</b>
+═══════════════════════════
 
-Direction: {direction_emoji} {signal.direction.value}
-Strategy: {signal.strategy.value}
-Entry: ${signal.entry_price:,.2f}
-Stop Loss: ${signal.stop_loss:,.2f} (-0.25%)
-Take Profit: ${signal.take_profit:,.2f} (+0.50%)
+{direction_emoji} <b>Direction:</b> {signal.direction.value}
+📈 <b>Strategy:</b> {signal.strategy.value}
 
-📊 <b>Quality:</b>
-├── Confidence: {signal.confidence:.0%}
-├── Setup: {signal.setup_quality}/100
+💰 <b>Price Levels:</b>
+├── Entry: <code>${signal.entry_price:,.2f}</code>
+├── Stop Loss: <code>${signal.stop_loss:,.2f}</code> (-{risk_percent:.2f}%)
+└── Take Profit: <code>${signal.take_profit:,.2f}</code> (+{reward_percent:.2f}%)
+
+📊 <b>Signal Quality:</b>
+├── AI Confidence: <b>{signal.confidence:.0%}</b>
+├── Setup Score: {signal.setup_quality}/100
+├── Risk:Reward: 1:{reward_percent/risk_percent:.1f}
 └── Regime: {signal.regime}
 
-📅 <b>Daily Status:</b>
-├── Trade: {daily_state.trade_count + 1}/{3}
-├── PnL: ${daily_state.pnl:+.2f}
-└── Target: $10.00
+📅 <b>Today's Progress:</b>
+├── This is trade #{daily_state.trade_count + 1}/3
+├── Current PnL: ${daily_state.pnl:+.2f}
+└── Target: ${10.0 - daily_state.pnl:.2f} remaining
 
-🆔 {signal.signal_id}
+🆔 <code>{signal.signal_id}</code>
+⏰ {datetime.utcnow().strftime('%H:%M:%S')} UTC
 """
-        return await self.send_message(message.strip())
+            result = await self.send_message(message.strip())
+            
+            if result:
+                logger.info(f"✅ Signal alert sent for {signal.signal_id}")
+            else:
+                logger.error(f"❌ Failed to send signal alert for {signal.signal_id}")
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"❌ Error preparing signal alert: {e}")
+            return False
     
-    async def send_regime_change(self, old_regime: str, new_regime: str, confidence: float) -> bool:
-        """Send regime change notification"""
+    async def send_regime_change(self, old_regime: str, new_regime: str, confidence: float, details: Dict = None) -> bool:
+        """
+        🔄 REGIME CHANGE - Thông báo khi market regime thay đổi
+        """
+        logger.info(f"📣 Regime change: {old_regime} → {new_regime}")
+        
+        regime_emoji = {
+            "TRENDING_UP": "🐂",
+            "TRENDING_DOWN": "🐻",
+            "RANGING": "↔️",
+            "HIGH_VOLATILITY": "⚡",
+            "CHOPPY": "〰️"
+        }
+        
+        old_emoji = regime_emoji.get(old_regime, "❓")
+        new_emoji = regime_emoji.get(new_regime, "❓")
+        
+        # Trading implications
+        if new_regime == "TRENDING_UP":
+            implication = "✅ Ưu tiên LONG | Theo trend | Cẩn thận exhaustion"
+        elif new_regime == "TRENDING_DOWN":
+            implication = "✅ Ưu tiên SHORT | Theo trend | Cẩn thận reversal"
+        elif new_regime == "RANGING":
+            implication = "↔️ Range trading | Mua support, bán resistance"
+        elif new_regime == "HIGH_VOLATILITY":
+            implication = "⚠️ Volatility cao | Giảm size | Quản lý risk chặt"
+        else:
+            implication = "⚠️ Thị trường khó đoán | Cân nhắc chờ đợi"
+        
         message = f"""
 🔄 <b>REGIME CHANGE</b>
-═══════════════
+═══════════════════════════
 
-From: {old_regime}
-To: {new_regime}
-Confidence: {confidence:.0%}
+{old_emoji} <b>From:</b> {old_regime}
+{new_emoji} <b>To:</b> {new_regime}
+
+📊 <b>Confidence:</b> {confidence:.0%}
+
+💡 <b>Trading Implication:</b>
+└── {implication}
 
 ⏰ {datetime.utcnow().strftime('%H:%M:%S')} UTC
 """
         return await self.send_message(message.strip())
     
-    async def send_daily_start(self) -> bool:
-        """Send daily start notification"""
-        message = f"""
-🌅 <b>NEW TRADING DAY</b>
-════════════════════
-
-📅 Date: {datetime.utcnow().strftime('%Y-%m-%d')}
-💰 Starting fresh!
-
-📊 <b>Daily Limits:</b>
-├── Target: +$10 (2%)
-├── Stop: -$15 (3%)
-└── Max Trades: 3
-
-🎯 Let's hit that target!
-"""
-        return await self.send_message(message.strip())
-    
-    async def send_daily_limit_reached(self, limit_type: str, pnl: float) -> bool:
-        """Send daily limit reached notification"""
-        if limit_type == "TARGET_HIT":
-            emoji = "🎯"
-            title = "DAILY TARGET HIT!"
-            message_end = "Done for today! See you tomorrow."
-        elif limit_type == "STOP_HIT":
-            emoji = "⛔"
-            title = "DAILY STOP HIT"
-            message_end = "Tomorrow is a new day! 💪"
-        else:
-            emoji = "📊"
-            title = "MAX TRADES REACHED"
-            message_end = "Trading paused until tomorrow."
+    async def send_error(self, error: str, critical: bool = False) -> bool:
+        """
+        ⚠️ ERROR - Thông báo khi có lỗi nghiêm trọng
+        """
+        emoji = "🚨" if critical else "⚠️"
+        title = "CRITICAL ERROR" if critical else "WARNING"
         
         message = f"""
 {emoji} <b>{title}</b>
-═══════════════
-
-📅 Date: {datetime.utcnow().strftime('%Y-%m-%d')}
-💰 PnL: ${pnl:+.2f}
-
-{message_end}
-"""
-        return await self.send_message(message.strip())
-    
-    async def send_learning_insight(self, lesson) -> bool:
-        """Send learning insight notification"""
-        message = f"""
-💡 <b>NEW INSIGHT</b>
-═══════════════
-
-📝 <b>Observation:</b>
-{lesson.observation}
-
-📊 <b>Conclusion:</b>
-{lesson.conclusion}
-
-✅ <b>Action:</b>
-{lesson.action_suggested}
-
-🎯 Confidence: {lesson.confidence:.0%}
-📈 Sample Size: {lesson.sample_size}
-"""
-        return await self.send_message(message.strip())
-    
-    async def send_status(self, status: Dict[str, Any]) -> bool:
-        """Send current status"""
-        message = f"""
-📊 <b>BOT STATUS</b>
-═══════════════
-
-🤖 Bot: Core Brain
-⚡ Status: {status.get('status', 'Unknown')}
-
-📈 <b>Current:</b>
-├── Price: ${status.get('price', 0):,.2f}
-├── Regime: {status.get('regime', 'Unknown')}
-└── Signals Today: {status.get('signals_today', 0)}
-
-📅 <b>Daily:</b>
-├── PnL: ${status.get('pnl', 0):+.2f}
-├── Trades: {status.get('trades', 0)}/3
-└── Status: {status.get('daily_status', 'ACTIVE')}
-
-⏰ {datetime.utcnow().strftime('%H:%M:%S')} UTC
-"""
-        return await self.send_message(message.strip())
-    
-    async def send_error(self, error: str) -> bool:
-        """Send error notification"""
-        message = f"""
-⚠️ <b>ERROR</b>
-═══════════════
+═══════════════════════════
 
 ❌ {error}
 
@@ -197,52 +192,37 @@ Confidence: {confidence:.0%}
 """
         return await self.send_message(message.strip())
     
+    # =====================================================
+    # DEPRECATED - Các hàm này không còn sử dụng
+    # Bot 2 sẽ đảm nhận các thông báo này
+    # =====================================================
+    
+    async def send_daily_start(self) -> bool:
+        """DEPRECATED - Bot 2 handles this"""
+        logger.debug("send_daily_start() deprecated - Bot 2 handles new day notifications")
+        return True
+    
+    async def send_daily_limit_reached(self, limit_type: str, pnl: float) -> bool:
+        """DEPRECATED - Bot 2 handles this"""
+        logger.debug(f"send_daily_limit_reached() deprecated - Bot 2 handles {limit_type}")
+        return True
+    
+    async def send_learning_insight(self, lesson) -> bool:
+        """DEPRECATED - Learning insights logged, not sent to Telegram"""
+        logger.info(f"Learning insight: {lesson.observation[:100] if lesson else 'N/A'}")
+        return True
+    
+    async def send_status(self, status: Dict[str, Any]) -> bool:
+        """DEPRECATED - Use /status command instead"""
+        logger.debug("send_status() deprecated - Use /status command")
+        return True
+    
     async def send_features_summary(self, features) -> bool:
-        """Send top features summary"""
-        tech = features.technical
-        mtf = features.mtf
-        
-        message = f"""
-📊 <b>FEATURES SNAPSHOT</b>
-═══════════════════════
-
-<b>Technical:</b>
-├── RSI(14): {tech.rsi_14:.1f}
-├── ADX: {tech.adx:.1f}
-├── MACD: {tech.macd_histogram:+.2f}
-└── BB Position: {tech.bb_position:.2f}
-
-<b>Multi-Timeframe:</b>
-├── 15m Trend: {mtf.tf_15m_trend}
-├── 5m Trend: {mtf.tf_5m_trend}
-└── Alignment: {mtf.mtf_alignment}/3
-
-<b>Funding:</b>
-└── Rate: {features.funding.funding_current*100:.4f}%
-
-⏰ {datetime.utcnow().strftime('%H:%M:%S')} UTC
-"""
-        return await self.send_message(message.strip())
+        """DEPRECATED - Features logged internally"""
+        logger.debug("send_features_summary() deprecated")
+        return True
     
     async def send_gates_status(self, gate_result) -> bool:
-        """Send gates status"""
-        lines = ["📋 <b>5-GATE STATUS</b>", "═══════════════════", ""]
-        
-        for gate in gate_result.gate_results:
-            if gate.status.value == "PASSED":
-                emoji = "✅"
-            elif gate.status.value == "FAILED":
-                emoji = "❌"
-            else:
-                emoji = "⏭️"
-            
-            lines.append(f"{emoji} {gate.gate_name}: {gate.score:.0%}")
-            lines.append(f"   └── {gate.reason[:50]}")
-        
-        lines.append("")
-        lines.append(f"Overall: {'✅ PASSED' if gate_result.passed else '❌ BLOCKED'}")
-        if gate_result.blocking_gate:
-            lines.append(f"Blocked by: {gate_result.blocking_gate}")
-        
-        return await self.send_message("\n".join(lines))
-
+        """DEPRECATED - Gate status logged internally"""
+        logger.debug("send_gates_status() deprecated")
+        return True

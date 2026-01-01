@@ -167,8 +167,8 @@ class HeartbeatBot:
                     f"Health status: {health_result.status.value} - {health_result.message}"
                 )
                 if health_result.alert_needed:
-                    await self.telegram.send_health_alert(
-                        health_result.status.value, health_result.message
+                    await self.telegram.send_alert(
+                        "HEALTH", health_result.status.value, health_result.message
                     )
 
                 # 2. Track pending signals
@@ -183,8 +183,8 @@ class HeartbeatBot:
                 # 3. Check for IQ degradation
                 iq_alert = self.iq_calculator.check_degradation()
                 if iq_alert:
-                    await self.telegram.send_iq_alert(
-                        iq_alert["level"], iq_alert["message"], iq_alert["action"]
+                    await self.telegram.send_alert(
+                        "IQ", iq_alert["level"], iq_alert["message"], iq_alert["action"]
                     )
 
                 # 4. Check for scheduled reports
@@ -204,17 +204,33 @@ class HeartbeatBot:
         """Handle new trading day"""
         logger.info("New trading day detected")
 
-        # Generate previous day's report
+        # Generate previous day's report (end of day summary)
         if self._last_report_date:
             report = self.report_generator.generate_daily_report(self._last_report_date)
             self.report_generator.save_daily_stats(report)
-            await self.telegram.send_daily_report(report)
+            
+            # Create daily_state-like object for send_end_of_day
+            class DailyState:
+                pass
+            ds = DailyState()
+            ds.date = report.date
+            ds.status = report.status
+            ds.trade_count = report.trades
+            ds.wins = report.wins
+            ds.losses = report.losses
+            ds.pnl = report.pnl
+            
+            await self.telegram.send_end_of_day(ds, report.avg_iq, report.account_balance)
 
         self._last_report_date = date.today().isoformat()
 
         # Check for weekly report (Sunday)
         if date.today().weekday() == settings.report.WEEKLY_REPORT_DAY:
             await self._send_weekly_report()
+        
+        # Send new day notification
+        daily_state = self.db.get_daily_state()
+        await self.telegram.send_new_day(daily_state)
 
     async def _handle_signal_result(self, result):
         """Handle a signal result (win/loss/timeout)"""
@@ -252,14 +268,11 @@ class HeartbeatBot:
         # Update daily state
         daily_state = self.daily_manager.update_with_result(result)
 
-        # Send result notification
-        await self.telegram.send_result_alert(result, daily_state, trade_iq)
-
-        # Check if daily limits hit
-        if daily_state.status == "TARGET_HIT":
-            await self.telegram.send_target_hit(daily_state)
-        elif daily_state.status == "STOP_HIT":
-            await self.telegram.send_stop_hit(daily_state)
+        # Send result notification (includes daily progress and next action)
+        await self.telegram.send_trade_result(result, daily_state, trade_iq)
+        
+        # Note: send_trade_result already includes daily status
+        # No need for separate target_hit/stop_hit notifications
 
     async def _check_scheduled_reports(self):
         """Check for and send scheduled reports"""
@@ -274,7 +287,7 @@ class HeartbeatBot:
     async def _send_weekly_report(self):
         """Send weekly report"""
         report = self.report_generator.generate_weekly_report()
-        await self.telegram.send_weekly_report(report)
+        await self.telegram.send_weekly_summary(report)
         self._last_weekly_report = date.today().isoformat()
 
     async def _send_startup_menu(self):

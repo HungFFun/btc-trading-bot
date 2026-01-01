@@ -352,8 +352,7 @@ class CoreBrainBot:
             # Reset daily state
             self.db.reset_daily_state(today)
             
-            # Send notification
-            await self.telegram.send_daily_start()
+            # Note: Bot 2 handles new day notifications
     
     def _get_daily_state(self) -> DailyState:
         """Get current daily state from database"""
@@ -426,9 +425,9 @@ class CoreBrainBot:
         # Analyze patterns
         new_lessons = self.learning_engine.analyze(trade_results)
         
-        # Send insights
+        # Log insights (not sent to Telegram to reduce noise)
         for lesson in new_lessons:
-            asyncio.create_task(self.telegram.send_learning_insight(lesson))
+            logger.info(f"💡 Learning insight: {lesson.observation[:100] if lesson else 'N/A'}")
         
         # Mark as analyzed
         for result in results:

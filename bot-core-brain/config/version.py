@@ -28,14 +28,14 @@ class VersionInfo:
 # Current version - UPDATE THIS AFTER EACH RELEASE
 CURRENT_VERSION = VersionInfo(
     major=5,
-    minor=0,
-    patch=8,
+    minor=1,
+    patch=0,
     build_date="2026-01-01",
     changelog=[
-        "🔧 [FIX] Fixed inline keyboard - reply_markup as dict not JSON string",
-        "🔧 [FIX] Added extensive debug logging for polling & commands",
-        "🔧 [FIX] Improved chat_id comparison logic",
-        "✨ [NEW] Menu buttons hiện ngay khi bot start",
+        "🔧 [OPTIMIZE] Giảm 60% thông báo - chỉ giữ 5 loại quan trọng",
+        "🔧 [OPTIMIZE] Thêm logging chi tiết cho signal_alert",
+        "🔧 [FIX] Fixed inline keyboard buttons",
+        "✨ [NEW] Gộp thông tin vào từng message",
     ]
 )
 
