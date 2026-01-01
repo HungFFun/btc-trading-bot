@@ -362,31 +362,8 @@ class TelegramCommandHandler:
         """Handle /version command"""
         try:
             message = f"""
-📦 <b>BOT VERSION INFO</b>
-═══════════════════════════
-
 💓 <b>Heartbeat Monitor</b>
 └── Version: <code>{CURRENT_VERSION.full_version}</code>
-
-📝 <b>Changelog ({CURRENT_VERSION.version_string}):</b>
-"""
-            for item in CURRENT_VERSION.changelog:
-                message += f"  • {item}\n"
-
-            message += f"""
-───────────────────────────
-🏗️ <b>Architecture:</b>
-├── Bot 1: Core Brain (signals)
-└── Bot 2: Heartbeat (monitoring)
-
-🔧 <b>This Bot Handles:</b>
-├── Health monitoring
-├── Signal tracking
-├── Trade IQ calculation
-└── Performance reports
-
-📅 Build Date: {CURRENT_VERSION.build_date}
-⏰ Uptime: Running
 """
             await self.send_message(message.strip())
 

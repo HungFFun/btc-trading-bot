@@ -146,7 +146,9 @@ class TelegramBot:
         🔄 REGIME CHANGE - DEPRECATED
         Chỉ log nội bộ, không gửi Telegram (quá nhiều noise)
         """
-        logger.info(f"📊 Regime change: {old_regime} → {new_regime} (confidence: {confidence:.0%})")
+        logger.info(
+            f"📊 Regime change: {old_regime} → {new_regime} (confidence: {confidence:.0%})"
+        )
         # Không gửi Telegram - regime changes quá thường xuyên
         return True
 
