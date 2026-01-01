@@ -329,11 +329,43 @@ class TelegramCommandHandler:
 """
         await self.send_message(message.strip())
 
+    async def set_bot_commands(self):
+        """Set bot commands menu in Telegram"""
+        if not self.enabled or not self.token:
+            return False
+
+        commands = [
+            {"command": "health", "description": "🏥 Kiểm tra sức khỏe bot"},
+            {"command": "today", "description": "📊 Kết quả hôm nay"},
+            {"command": "version", "description": "📦 Phiên bản bot"},
+            {"command": "help", "description": "❓ Trợ giúp"},
+        ]
+
+        try:
+            session = await self._get_session()
+            url = f"{self.base_url}/setMyCommands"
+            data = {"commands": commands}
+
+            async with session.post(url, json=data) as response:
+                if response.status == 200:
+                    logger.info("✅ Bot commands menu updated successfully")
+                    return True
+                else:
+                    error = await response.text()
+                    logger.error(f"Failed to set bot commands: {error}")
+                    return False
+        except Exception as e:
+            logger.error(f"Error setting bot commands: {e}")
+            return False
+
     async def start_polling(self):
         """Start polling for commands"""
         if not self.enabled or not self.token:
             logger.info("Command handler disabled or not configured")
             return
+
+        # Set bot commands menu on startup
+        await self.set_bot_commands()
 
         self._running = True
         logger.info("🎮 Telegram command handler started (polling mode)")

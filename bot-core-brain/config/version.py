@@ -29,16 +29,14 @@ class VersionInfo:
 CURRENT_VERSION = VersionInfo(
     major=5,
     minor=0,
-    patch=2,
+    patch=3,
     build_date="2026-01-01",
     changelog=[
-        "🔴 [CRITICAL] Fixed: Gate 2 now validates direction vs regime",
-        "🔴 [CRITICAL] Fixed: Liquidation Hunt strategy respects regime direction",
-        "🔴 [CRITICAL] Fixed: Funding Fade strategy respects regime direction",
-        "🟡 [HIGH] Fixed: AI mock prediction no longer trades against trend",
-        "🟢 [MEDIUM] Added: Enhanced logging for gate evaluation",
-        "🟢 [MEDIUM] Added: Final direction validation in Signal Generator",
-        "✨ [NEW] Added: /version command to check bot version",
+        "✨ [NEW] Auto-update Telegram bot menu on startup",
+        "🔴 [CRITICAL] Fixed: Gate 2 validates direction vs regime",
+        "🔴 [CRITICAL] Fixed: Strategies respect regime direction",
+        "🟡 [HIGH] Fixed: AI mock prediction logic",
+        "✨ [NEW] Added: /version command",
     ]
 )
 

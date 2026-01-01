@@ -28,12 +28,12 @@ class VersionInfo:
 CURRENT_VERSION = VersionInfo(
     major=5,
     minor=0,
-    patch=2,
+    patch=3,
     build_date="2026-01-01",
     changelog=[
-        "✨ [NEW] Added: /version command to check bot version",
+        "✨ [NEW] Auto-update Telegram bot menu on startup",
+        "✨ [NEW] Added: /version command",
         "🟢 [MEDIUM] Improved: Signal tracking accuracy",
-        "🟢 [MEDIUM] Improved: Health monitoring",
     ]
 )
 
