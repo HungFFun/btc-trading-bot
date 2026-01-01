@@ -21,9 +21,33 @@ jobs:
           script: |
             echo "🚀 Starting deployment..."
             cd /root/btc-trading-bot
-            git pull origin main
-            docker compose down
-            docker compose up -d --build
-            sleep 10
+            
+            echo "📥 Pulling latest code..."
+            git fetch origin main
+            git reset --hard origin/main
+            
+            echo "🔄 Checking current version..."
+            cat bot-core-brain/config/version.py | grep -A5 "CURRENT_VERSION"
+            
+            echo "🛑 Stopping old containers..."
+            docker compose down --remove-orphans
+            
+            echo "🗑️ Cleaning old images..."
+            docker image prune -f
+            
+            echo "🔨 Building new images..."
+            docker compose build --no-cache
+            
+            echo "🚀 Starting containers..."
+            docker compose up -d --force-recreate
+            
+            echo "⏳ Waiting for containers to start..."
+            sleep 15
+            
+            echo "📊 Container status:"
             docker compose ps
+            
+            echo "📝 Recent logs:"
+            docker compose logs --tail=20
+            
             echo "🎉 Deployment completed!"
