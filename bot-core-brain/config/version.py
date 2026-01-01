@@ -29,13 +29,13 @@ class VersionInfo:
 CURRENT_VERSION = VersionInfo(
     major=5,
     minor=1,
-    patch=0,
+    patch=1,
     build_date="2026-01-01",
     changelog=[
-        "🔧 [OPTIMIZE] Giảm 60% thông báo - chỉ giữ 5 loại quan trọng",
-        "🔧 [OPTIMIZE] Thêm logging chi tiết cho signal_alert",
-        "🔧 [FIX] Fixed inline keyboard buttons",
-        "✨ [NEW] Gộp thông tin vào từng message",
+        "🔧 [OPTIMIZE] Bỏ REGIME CHANGE notification (quá nhiều noise)",
+        "🔧 [OPTIMIZE] Bot 1 chỉ gửi 2 loại: NEW SIGNAL + ERROR",
+        "🔧 [OPTIMIZE] Tập trung vào signal quality, không spam",
+        "✨ [NEW] Regime changes chỉ log nội bộ",
     ]
 )
 
