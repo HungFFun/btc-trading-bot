@@ -28,11 +28,11 @@ class VersionInfo:
 CURRENT_VERSION = VersionInfo(
     major=5,
     minor=0,
-    patch=5,
+    patch=6,
     build_date="2026-01-01",
     changelog=[
+        "🔧 [FIX] Fixed inline keyboard buttons (JSON serialize)",
         "✨ [NEW] Menu buttons hiện ngay khi bot start",
-        "✨ [NEW] Interactive inline keyboard buttons",
         "✨ [NEW] Added: /version, /menu commands",
     ]
 )

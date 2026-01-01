@@ -4,6 +4,7 @@ Handles interactive commands: /health, /today, /version
 """
 
 import asyncio
+import json
 import logging
 from datetime import datetime, date, timedelta
 from typing import Optional, Dict, Any
@@ -42,6 +43,7 @@ class TelegramCommandHandler:
     ) -> bool:
         """Send a message to the chat"""
         if not self.enabled or not self.token or not self.chat_id:
+            logger.warning("Telegram disabled or not configured")
             return False
 
         try:
@@ -50,10 +52,14 @@ class TelegramCommandHandler:
             data = {"chat_id": self.chat_id, "text": text, "parse_mode": parse_mode}
 
             if reply_markup:
-                data["reply_markup"] = reply_markup
+                # reply_markup must be JSON-serialized string for Telegram API
+                data["reply_markup"] = json.dumps(reply_markup)
 
+            logger.info(f"Sending message to Telegram: {text[:50]}...")
+            
             async with session.post(url, json=data) as response:
                 if response.status == 200:
+                    logger.info("Message sent successfully")
                     return True
                 else:
                     error = await response.text()
