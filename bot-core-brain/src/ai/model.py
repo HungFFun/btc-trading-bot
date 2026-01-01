@@ -314,32 +314,73 @@ class AIModel:
         )
     
     def _mock_prediction(self, feature_vector: List[float]) -> AIResult:
-        """Generate mock prediction when models aren't available"""
-        # Simple heuristic based on key features
+        """
+        Generate mock prediction when models aren't available.
+        
+        IMPORTANT: Mock prediction should be CONSERVATIVE and NOT trade against trend!
+        - NO_TRADE is the default safe option
+        - Only suggest direction if indicators are neutral (40-60 RSI)
+        - Lower confidence for mock predictions (max 0.70)
+        """
+        # Extract key features safely
         rsi = feature_vector[1] if len(feature_vector) > 1 else 50  # rsi_14
         adx = feature_vector[14] if len(feature_vector) > 14 else 20  # adx
         
-        # Determine direction based on RSI
-        if rsi < 35:
-            direction = "LONG"
-            confidence = 0.6 + (35 - rsi) / 100
-        elif rsi > 65:
-            direction = "SHORT"
-            confidence = 0.6 + (rsi - 65) / 100
+        # Get EMA alignment to determine trend
+        ema_9 = feature_vector[2] if len(feature_vector) > 2 else 0  # ema_9
+        ema_21 = feature_vector[3] if len(feature_vector) > 3 else 0  # ema_21
+        ema_50 = feature_vector[4] if len(feature_vector) > 4 else 0  # ema_50
+        
+        # Determine trend from EMA alignment
+        is_uptrend = ema_9 > ema_21 > ema_50 > 0
+        is_downtrend = ema_9 < ema_21 < ema_50 and ema_50 > 0
+        
+        # Default: Conservative NO_TRADE
+        direction = "NO_TRADE"
+        confidence = 0.50
+        risk_factors = ["Using mock prediction - no trained models"]
+        
+        # Only suggest direction if:
+        # 1. Strong ADX (trend present)
+        # 2. RSI is in neutral zone (not extreme)
+        # 3. Direction aligns with EMA trend
+        
+        if adx > 25:  # Trend is present
+            # In uptrend: Only suggest LONG if RSI not overbought
+            if is_uptrend and rsi < 65:
+                direction = "LONG"
+                confidence = 0.55 + (adx - 25) / 100  # Higher ADX = higher confidence
+                if rsi > 40 and rsi < 60:  # Ideal RSI zone
+                    confidence += 0.05
+            
+            # In downtrend: Only suggest SHORT if RSI not oversold
+            elif is_downtrend and rsi > 35:
+                direction = "SHORT"
+                confidence = 0.55 + (adx - 25) / 100
+                if rsi > 40 and rsi < 60:  # Ideal RSI zone
+                    confidence += 0.05
+            
+            # No clear trend or extreme RSI: NO_TRADE
+            else:
+                direction = "NO_TRADE"
+                confidence = 0.50
+                if rsi > 80:
+                    risk_factors.append(f"RSI extremely overbought ({rsi:.1f})")
+                elif rsi < 20:
+                    risk_factors.append(f"RSI extremely oversold ({rsi:.1f})")
         else:
-            direction = "NO_TRADE"
-            confidence = 0.5
+            # Weak ADX: NO_TRADE
+            risk_factors.append(f"Weak trend (ADX: {adx:.1f})")
         
-        # Adjust for ADX
-        if adx > 25:
-            confidence += 0.1
+        # IMPORTANT: Cap mock confidence at 0.70 (lower than trained model threshold of 0.65)
+        confidence = min(0.70, max(0.40, confidence))
         
-        confidence = min(0.95, max(0.3, confidence))
+        logger.info(f"Mock prediction: {direction} | Confidence: {confidence:.2%} | RSI: {rsi:.1f} | ADX: {adx:.1f}")
         
         return AIResult(
             confidence=confidence,
             direction=direction,
-            risk_factors=["Using mock prediction - no trained models"],
+            risk_factors=risk_factors,
             feature_importance={},
             model_agreement=1.0
         )

@@ -1,12 +1,14 @@
 """
 Telegram Command Handler for Bot 1 (Core Brain)
-Handles interactive commands: /status, /daily, /regime
+Handles interactive commands: /status, /daily, /regime, /version
 """
 import asyncio
 import logging
 from datetime import datetime, date
 from typing import Optional, Dict, Any
 import aiohttp
+
+from config.version import get_version, get_full_version, format_version_message, CURRENT_VERSION
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +105,8 @@ class TelegramCommandHandler:
             await self.cmd_daily()
         elif command == "/regime":
             await self.cmd_regime()
+        elif command == "/version":
+            await self.cmd_version()
         elif command == "/help":
             await self.cmd_help()
         elif command == "/start":
@@ -299,9 +303,45 @@ class TelegramCommandHandler:
             logger.error(f"Error in cmd_regime: {e}")
             await self.send_message(f"❌ Error fetching regime: {str(e)}")
     
+    async def cmd_version(self):
+        """Handle /version command"""
+        try:
+            message = f"""
+📦 <b>BOT VERSION INFO</b>
+═══════════════════════════
+
+🤖 <b>BTC Trading Bot</b>
+└── Version: <code>{CURRENT_VERSION.full_version}</code>
+
+📝 <b>Changelog ({CURRENT_VERSION.version_string}):</b>
+"""
+            for item in CURRENT_VERSION.changelog:
+                message += f"  • {item}\n"
+            
+            message += f"""
+───────────────────────────
+🏗️ <b>Architecture:</b>
+├── Bot 1: Core Brain (signals)
+└── Bot 2: Heartbeat (monitoring)
+
+🔧 <b>Components:</b>
+├── 5-Gate Filter System
+├── 100 BTC Features
+├── Ensemble AI (XGB+LGB+LR)
+└── Multi-Timeframe Analysis
+
+📅 Build Date: {CURRENT_VERSION.build_date}
+⏰ Uptime: Running
+"""
+            await self.send_message(message.strip())
+            
+        except Exception as e:
+            logger.error(f"Error in cmd_version: {e}")
+            await self.send_message(f"❌ Error fetching version: {str(e)}")
+    
     async def cmd_help(self):
         """Handle /help command"""
-        message = """
+        message = f"""
 🤖 <b>Core Brain Bot Commands</b>
 ═══════════════════════════
 
@@ -316,12 +356,15 @@ class TelegramCommandHandler:
 📈 <b>/regime</b>
 └── Current market regime analysis
 
+📦 <b>/version</b>
+└── Show bot version and changelog
+
 ❓ <b>/help</b>
 └── Show this help message
 
 ───────────────────────────
 🤖 Bot 1: Core Brain
-🎯 BTC Trading Bot v5.0
+🎯 BTC Trading Bot {get_full_version()}
 """
         await self.send_message(message.strip())
     

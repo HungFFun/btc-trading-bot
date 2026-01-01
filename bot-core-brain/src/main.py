@@ -13,6 +13,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config.settings import settings
+from config.version import get_full_version, CURRENT_VERSION
 from src.data.binance_client import BinanceClient
 from src.features.feature_engine import FeatureEngine
 from src.features.regime import RegimeDetector
@@ -126,7 +127,13 @@ class CoreBrainBot:
     
     async def start(self):
         """Start the bot"""
-        logger.info("Starting Core Brain Bot v5.0...")
+        logger.info("=" * 60)
+        logger.info(f"Starting Core Brain Bot {get_full_version()}")
+        logger.info("=" * 60)
+        for item in CURRENT_VERSION.changelog[:3]:  # Show first 3 changelog items
+            logger.info(f"  {item}")
+        logger.info("=" * 60)
+        
         self._running = True
         
         # Ensure logs directory exists
@@ -143,8 +150,14 @@ class CoreBrainBot:
         # Wait for initial data
         await asyncio.sleep(5)
         
-        # Send startup notification
-        await self.telegram.send_message("🤖 Core Brain Bot started!\n\nUse /help to see available commands.")
+        # Send startup notification with version
+        startup_msg = f"""🤖 <b>Core Brain Bot Started!</b>
+
+📦 Version: <code>{get_full_version()}</code>
+
+Use /help to see available commands.
+Use /version to see changelog."""
+        await self.telegram.send_message(startup_msg)
         
         try:
             await self._main_loop()
@@ -266,25 +279,45 @@ class CoreBrainBot:
                     
                     if gate_result and gate_result.passed:
                         logger.info("All 5 gates passed!")
+                        
                         # Check AI confidence
                         if ai_result and ai_result.confidence >= settings.ai.CONFIDENCE_THRESHOLD:
-                            logger.info(f"Signal APPROVED: {potential_signal.signal_id}")
                             
-                            # Update signal with gate scores
-                            potential_signal.confidence = ai_result.confidence
-                            potential_signal.gate_scores = {
-                                f'gate_{i+1}': g.score 
-                                for i, g in enumerate(gate_result.gate_results)
-                            }
+                            # FINAL VALIDATION: Check AI direction matches signal direction
+                            ai_direction = ai_result.direction
+                            signal_direction = potential_signal.direction.value
                             
-                            # Save to database
-                            self._save_signal(potential_signal, features)
-                            
-                            # Send alert
-                            await self.telegram.send_signal_alert(
-                                potential_signal, 
-                                daily_state
-                            )
+                            # If AI says NO_TRADE, reject
+                            if ai_direction == "NO_TRADE":
+                                logger.warning(f"Signal rejected: AI says NO_TRADE")
+                            # If AI direction conflicts with signal direction
+                            elif ai_direction != signal_direction:
+                                logger.warning(
+                                    f"Signal rejected: AI direction ({ai_direction}) != "
+                                    f"Signal direction ({signal_direction})"
+                                )
+                            else:
+                                # All checks passed!
+                                logger.info(f"Signal APPROVED: {potential_signal.signal_id}")
+                                logger.info(f"  Direction: {signal_direction} (AI confirms)")
+                                logger.info(f"  Confidence: {ai_result.confidence:.0%}")
+                                logger.info(f"  Regime: {regime.regime_type.value}")
+                                
+                                # Update signal with gate scores
+                                potential_signal.confidence = ai_result.confidence
+                                potential_signal.gate_scores = {
+                                    f'gate_{i+1}': g.score 
+                                    for i, g in enumerate(gate_result.gate_results)
+                                }
+                                
+                                # Save to database
+                                self._save_signal(potential_signal, features)
+                                
+                                # Send alert
+                                await self.telegram.send_signal_alert(
+                                    potential_signal, 
+                                    daily_state
+                                )
                         else:
                             logger.info(f"Signal rejected: AI confidence {ai_result.confidence:.0%} < {settings.ai.CONFIDENCE_THRESHOLD:.0%}")
                     else:

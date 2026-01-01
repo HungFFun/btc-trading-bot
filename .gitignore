@@ -59,3 +59,9 @@ htmlcov/
 # Jupyter Notebook
 .ipynb_checkpoints
 
+# Markdown files (internal documentation)
+*.md
+# Keep important README files
+!README.md
+!**/README.md
+

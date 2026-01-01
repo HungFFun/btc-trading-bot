@@ -143,10 +143,17 @@ class FiveGateSystem:
         """
         gate_results = []
         
+        logger.info("=" * 50)
+        logger.info("GATE EVALUATION START")
+        logger.info(f"Signal: {signal.get('direction')} | Strategy: {signal.get('strategy', 'N/A')}")
+        logger.info(f"Regime: {regime.regime_type.value} | Confidence: {regime.confidence:.2%}")
+        
         # Gate 1: Context
         gate1 = self._check_gate1_context(features)
         gate_results.append(gate1)
+        logger.info(f"Gate 1 (Context): {gate1.status.value} | Score: {gate1.score:.2f} | {gate1.reason}")
         if gate1.status == GateStatus.FAILED:
+            logger.info(f"Gate 1 FAILED: {gate1.reason}")
             return GateSystemResult(
                 passed=False,
                 gate_results=gate_results,
@@ -154,10 +161,12 @@ class FiveGateSystem:
                 blocking_gate="Gate 1: Context"
             )
         
-        # Gate 2: Regime
-        gate2 = self._check_gate2_regime(regime)
+        # Gate 2: Regime + Direction Validation (CRITICAL FIX)
+        gate2 = self._check_gate2_regime(regime, signal)
         gate_results.append(gate2)
+        logger.info(f"Gate 2 (Regime): {gate2.status.value} | Score: {gate2.score:.2f} | {gate2.reason}")
         if gate2.status == GateStatus.FAILED:
+            logger.info(f"Gate 2 FAILED: {gate2.reason}")
             return GateSystemResult(
                 passed=False,
                 gate_results=gate_results,
@@ -168,7 +177,9 @@ class FiveGateSystem:
         # Gate 3: Signal Quality
         gate3 = self._check_gate3_signal_quality(features, signal)
         gate_results.append(gate3)
+        logger.info(f"Gate 3 (Signal Quality): {gate3.status.value} | Score: {gate3.score:.2f} | {gate3.reason}")
         if gate3.status == GateStatus.FAILED:
+            logger.info(f"Gate 3 FAILED: {gate3.reason}")
             return GateSystemResult(
                 passed=False,
                 gate_results=gate_results,
@@ -179,7 +190,9 @@ class FiveGateSystem:
         # Gate 4: AI Confirmation
         gate4 = self._check_gate4_ai(ai_result)
         gate_results.append(gate4)
+        logger.info(f"Gate 4 (AI): {gate4.status.value} | Score: {gate4.score:.2f} | {gate4.reason}")
         if gate4.status == GateStatus.FAILED:
+            logger.info(f"Gate 4 FAILED: {gate4.reason}")
             return GateSystemResult(
                 passed=False,
                 gate_results=gate_results,
@@ -190,7 +203,9 @@ class FiveGateSystem:
         # Gate 5: Daily Limits (MOST IMPORTANT)
         gate5 = self._check_gate5_daily_limits(daily_state)
         gate_results.append(gate5)
+        logger.info(f"Gate 5 (Daily Limits): {gate5.status.value} | Score: {gate5.score:.2f} | {gate5.reason}")
         if gate5.status == GateStatus.FAILED:
+            logger.info(f"Gate 5 FAILED: {gate5.reason}")
             return GateSystemResult(
                 passed=False,
                 gate_results=gate_results,
@@ -200,6 +215,9 @@ class FiveGateSystem:
         
         # All gates passed!
         overall_score = sum(g.score for g in gate_results) / len(gate_results)
+        logger.info("=" * 50)
+        logger.info(f"ALL 5 GATES PASSED! Overall score: {overall_score:.2f}")
+        logger.info("=" * 50)
         return GateSystemResult(
             passed=True,
             gate_results=gate_results,
@@ -269,14 +287,16 @@ class FiveGateSystem:
                 details={'session': session_name, 'hour': hour}
             )
     
-    def _check_gate2_regime(self, regime: RegimeResult) -> GateResult:
+    def _check_gate2_regime(self, regime: RegimeResult, signal: dict) -> GateResult:
         """
-        Gate 2: Regime Check
+        Gate 2: Regime Check + Direction Validation
         - Not CHOPPY
+        - Direction MUST align with regime (CRITICAL!)
         - Exhaustion risk < 0.5
         - Structure quality >= 0.6
         - Confidence >= 65%
         """
+        # Check 1: Không trade trong CHOPPY
         if regime.regime_type == RegimeType.CHOPPY:
             return GateResult(
                 gate_name="Gate 2: Regime",
@@ -286,6 +306,28 @@ class FiveGateSystem:
                 details={'regime': regime.regime_type.value}
             )
         
+        # Check 2 (CRITICAL): Direction PHẢI phù hợp với Regime
+        direction = signal.get('direction', '')
+        direction_valid, direction_reason = self._validate_direction_vs_regime(
+            direction, 
+            regime.regime_type,
+            regime.exhaustion_risk
+        )
+        
+        if not direction_valid:
+            return GateResult(
+                gate_name="Gate 2: Regime",
+                status=GateStatus.FAILED,
+                score=0.0,
+                reason=direction_reason,
+                details={
+                    'regime': regime.regime_type.value, 
+                    'direction': direction,
+                    'forbidden': True
+                }
+            )
+        
+        # Check 3: Exhaustion risk
         if regime.exhaustion_risk >= self.exhaustion_risk_max:
             return GateResult(
                 gate_name="Gate 2: Regime",
@@ -295,6 +337,7 @@ class FiveGateSystem:
                 details={'regime': regime.regime_type.value, 'exhaustion': regime.exhaustion_risk}
             )
         
+        # Check 4: Structure quality
         if regime.structure_quality < self.structure_quality_min:
             return GateResult(
                 gate_name="Gate 2: Regime",
@@ -304,6 +347,7 @@ class FiveGateSystem:
                 details={'regime': regime.regime_type.value, 'structure': regime.structure_quality}
             )
         
+        # Check 5: Regime confidence
         if regime.confidence < self.regime_confidence_min:
             return GateResult(
                 gate_name="Gate 2: Regime",
@@ -317,9 +361,47 @@ class FiveGateSystem:
             gate_name="Gate 2: Regime",
             status=GateStatus.PASSED,
             score=regime.confidence,
-            reason=f"{regime.regime_type.value} with {regime.confidence:.0%} confidence",
-            details={'regime': regime.regime_type.value, 'confidence': regime.confidence}
+            reason=f"{regime.regime_type.value} + {direction} validated ({regime.confidence:.0%} conf)",
+            details={'regime': regime.regime_type.value, 'confidence': regime.confidence, 'direction': direction}
         )
+    
+    def _validate_direction_vs_regime(
+        self, 
+        direction: str, 
+        regime_type: RegimeType,
+        exhaustion_risk: float
+    ) -> tuple:
+        """
+        RULE CỨNG: Không được đánh ngược trend mạnh
+        
+        Rules:
+        1. TRENDING_UP → Chỉ LONG (trừ khi exhaustion > 0.7)
+        2. TRENDING_DOWN → Chỉ SHORT (trừ khi exhaustion > 0.7)
+        3. RANGING, HIGH_VOLATILITY → Cả hai direction OK
+        
+        Returns:
+            (is_valid: bool, reason: str)
+        """
+        # Rule 1: TRENDING_UP chỉ được LONG
+        if regime_type == RegimeType.TRENDING_UP and direction == "SHORT":
+            # Exception: Nếu exhaustion rất cao, có thể cho phép counter-trend
+            if exhaustion_risk > 0.7:
+                logger.info(f"Counter-trend SHORT allowed in TRENDING_UP due to high exhaustion: {exhaustion_risk:.2f}")
+                return True, f"Counter-trend allowed (exhaustion: {exhaustion_risk:.2f})"
+            logger.warning(f"FORBIDDEN: SHORT in TRENDING_UP (exhaustion: {exhaustion_risk:.2f})")
+            return False, f"FORBIDDEN: Cannot SHORT in TRENDING_UP regime (exhaustion: {exhaustion_risk:.2f} < 0.7)"
+        
+        # Rule 2: TRENDING_DOWN chỉ được SHORT
+        if regime_type == RegimeType.TRENDING_DOWN and direction == "LONG":
+            # Exception: Nếu exhaustion rất cao, có thể cho phép counter-trend
+            if exhaustion_risk > 0.7:
+                logger.info(f"Counter-trend LONG allowed in TRENDING_DOWN due to high exhaustion: {exhaustion_risk:.2f}")
+                return True, f"Counter-trend allowed (exhaustion: {exhaustion_risk:.2f})"
+            logger.warning(f"FORBIDDEN: LONG in TRENDING_DOWN (exhaustion: {exhaustion_risk:.2f})")
+            return False, f"FORBIDDEN: Cannot LONG in TRENDING_DOWN regime (exhaustion: {exhaustion_risk:.2f} < 0.7)"
+        
+        # RANGING và HIGH_VOLATILITY: cho phép cả hai
+        return True, f"Direction {direction} valid for {regime_type.value}"
     
     def _check_gate3_signal_quality(self, features: AllFeatures, signal: dict) -> GateResult:
         """

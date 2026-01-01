@@ -8,20 +8,22 @@ Added interactive Telegram commands for both bots to query status and informatio
 
 ### Bot 1 (@CoreBrainBot) Commands:
 
-| Command | Description |
-|---------|-------------|
-| `/status` | Current bot status and market overview |
-| `/daily` | Today's trading state (PnL, trades, win rate) |
-| `/regime` | Current market regime analysis |
-| `/help` | Show available commands |
+| Command    | Description                                   |
+| ---------- | --------------------------------------------- |
+| `/status`  | Current bot status and market overview        |
+| `/daily`   | Today's trading state (PnL, trades, win rate) |
+| `/regime`  | Current market regime analysis                |
+| `/version` | Show bot version and changelog                |
+| `/help`    | Show available commands                       |
 
 ### Bot 2 (@HeartbeatBot) Commands:
 
-| Command | Description |
-|---------|-------------|
-| `/health` | Bot 1 health status |
-| `/today` | Today's trading results and statistics |
-| `/help` | Show available commands |
+| Command    | Description                            |
+| ---------- | -------------------------------------- |
+| `/health`  | Bot 1 health status                    |
+| `/today`   | Today's trading results and statistics |
+| `/version` | Show bot version and changelog         |
+| `/help`    | Show available commands                |
 
 ## 🔒 Security
 
@@ -32,14 +34,17 @@ Added interactive Telegram commands for both bots to query status and informatio
 ## 🏗️ Implementation Details
 
 ### New Files:
+
 - `bot-core-brain/src/telegram/command_handler.py` - Command handler for Bot 1
 - `bot-heartbeat/src/telegram/command_handler.py` - Command handler for Bot 2
 
 ### Modified Files:
+
 - `bot-core-brain/src/main.py` - Integrated command polling task
 - `bot-heartbeat/src/main.py` - Integrated command polling task
 
 ### How It Works:
+
 1. Command handler runs in separate async task
 2. Long polling to Telegram API (`getUpdates`)
 3. Parses incoming messages starting with `/`
@@ -90,8 +95,10 @@ Before merging to production, verify:
 - [ ] `/status` command returns current bot status
 - [ ] `/daily` command shows today's PnL and trades
 - [ ] `/regime` command displays current market regime
+- [ ] `/version` command shows bot version and changelog
 - [ ] `/health` command (Bot 2) shows Bot 1 health
 - [ ] `/today` command (Bot 2) shows trading results
+- [ ] `/version` command (Bot 2) shows version info
 - [ ] `/help` command displays available commands
 - [ ] Unauthorized chat IDs are rejected
 - [ ] Commands don't interfere with main bot loop
@@ -130,6 +137,7 @@ docker-compose restart
 ### Step 4: Verify
 
 Send a test command to your production bot:
+
 ```
 /status
 ```
@@ -189,4 +197,3 @@ A: Yes, set `TELEGRAM_ENABLED=false` in environment variables.
 **Created:** 2025-12-31
 **Branch:** feature/telegram-commands
 **Status:** Ready for testing
-

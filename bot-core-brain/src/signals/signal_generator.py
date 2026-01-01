@@ -137,18 +137,29 @@ class SignalGenerator:
             Signal if conditions met, None otherwise
         """
         if not regime.is_tradeable:
+            logger.debug(f"Regime not tradeable: {regime.regime_type.value}")
             return None
         
         # Select strategy based on conditions
         strategy, direction = self._select_strategy(features, regime)
         
         if strategy is None or direction is None:
+            logger.debug("No valid strategy/direction found")
+            return None
+        
+        # FINAL VALIDATION: Direction MUST align with regime (CRITICAL!)
+        if not self._validate_direction_vs_regime(direction, regime):
+            logger.warning(
+                f"REJECTED: {direction.value} not allowed in {regime.regime_type.value} "
+                f"(exhaustion: {regime.exhaustion_risk:.2f})"
+            )
             return None
         
         # Calculate setup quality
         setup_quality = self._calculate_setup_quality(features, strategy, direction)
         
         if setup_quality < 70:  # Minimum threshold
+            logger.debug(f"Setup quality too low: {setup_quality}/100")
             return None
         
         # Calculate entry, SL, TP
@@ -172,51 +183,93 @@ class SignalGenerator:
             reasoning=self._generate_reasoning(features, regime, strategy, direction)
         )
         
-        logger.info(f"Generated signal: {signal.signal_id} - {direction.value} {strategy.value}")
+        logger.info(f"Generated signal: {signal.signal_id} - {direction.value} {strategy.value} in {regime.regime_type.value}")
         return signal
+    
+    def _validate_direction_vs_regime(
+        self, 
+        direction: SignalDirection, 
+        regime: RegimeResult
+    ) -> bool:
+        """
+        FINAL VALIDATION: Ensure direction aligns with regime.
+        
+        Rules:
+        - TRENDING_UP → Only LONG (exception: exhaustion > 0.7)
+        - TRENDING_DOWN → Only SHORT (exception: exhaustion > 0.7)
+        - RANGING, HIGH_VOLATILITY → Both allowed
+        """
+        # TRENDING_UP: Chỉ được LONG
+        if regime.regime_type == RegimeType.TRENDING_UP and direction == SignalDirection.SHORT:
+            if regime.exhaustion_risk > 0.7:
+                logger.info(f"Counter-trend SHORT allowed due to high exhaustion: {regime.exhaustion_risk:.2f}")
+                return True
+            return False
+        
+        # TRENDING_DOWN: Chỉ được SHORT
+        if regime.regime_type == RegimeType.TRENDING_DOWN and direction == SignalDirection.LONG:
+            if regime.exhaustion_risk > 0.7:
+                logger.info(f"Counter-trend LONG allowed due to high exhaustion: {regime.exhaustion_risk:.2f}")
+                return True
+            return False
+        
+        return True
     
     def _select_strategy(
         self, 
         features: AllFeatures, 
         regime: RegimeResult
     ) -> tuple:
-        """Select appropriate strategy and direction"""
+        """
+        Select appropriate strategy and direction.
+        
+        IMPORTANT: All strategies MUST validate direction against regime!
+        - TRENDING_UP → Only LONG allowed
+        - TRENDING_DOWN → Only SHORT allowed
+        - RANGING, HIGH_VOLATILITY → Both allowed
+        """
         
         # Check for special conditions first
         
         # Funding Fade (extreme funding)
         if features.funding and features.funding.funding_extreme:
-            setup = self._validate_funding_fade(features)
-            if setup:
-                return StrategyType.FUNDING_FADE, setup
+            direction = self._validate_funding_fade(features, regime)
+            if direction:
+                logger.info(f"Strategy: FUNDING_FADE | Direction: {direction.value}")
+                return StrategyType.FUNDING_FADE, direction
         
         # Liquidation Hunt (liq zone nearby)
         liq = features.liquidation
         if liq.distance_to_long_liq < 0.02 or liq.distance_to_short_liq < 0.02:
-            setup = self._validate_liquidation_hunt(features)
-            if setup:
-                return StrategyType.LIQUIDATION_HUNT, setup
+            direction = self._validate_liquidation_hunt(features, regime)
+            if direction:
+                logger.info(f"Strategy: LIQUIDATION_HUNT | Direction: {direction.value}")
+                return StrategyType.LIQUIDATION_HUNT, direction
         
         # Select based on regime
         if regime.regime_type == RegimeType.TRENDING_UP:
             setup = self._validate_trend_momentum(features, SignalDirection.LONG)
             if setup:
+                logger.info(f"Strategy: TREND_MOMENTUM | Direction: LONG (TRENDING_UP)")
                 return StrategyType.TREND_MOMENTUM, SignalDirection.LONG
         
         elif regime.regime_type == RegimeType.TRENDING_DOWN:
             setup = self._validate_trend_momentum(features, SignalDirection.SHORT)
             if setup:
+                logger.info(f"Strategy: TREND_MOMENTUM | Direction: SHORT (TRENDING_DOWN)")
                 return StrategyType.TREND_MOMENTUM, SignalDirection.SHORT
         
         elif regime.regime_type == RegimeType.RANGING:
-            setup = self._validate_range_scalping(features)
-            if setup:
-                return StrategyType.RANGE_SCALPING, setup
+            direction = self._validate_range_scalping(features)
+            if direction:
+                logger.info(f"Strategy: RANGE_SCALPING | Direction: {direction.value}")
+                return StrategyType.RANGE_SCALPING, direction
         
         elif regime.regime_type == RegimeType.HIGH_VOLATILITY:
-            setup = self._validate_liquidation_hunt(features)
-            if setup:
-                return StrategyType.LIQUIDATION_HUNT, setup
+            direction = self._validate_liquidation_hunt(features, regime)
+            if direction:
+                logger.info(f"Strategy: LIQUIDATION_HUNT | Direction: {direction.value} (HIGH_VOLATILITY)")
+                return StrategyType.LIQUIDATION_HUNT, direction
         
         return None, None
     
@@ -275,44 +328,122 @@ class SignalGenerator:
             
             return True
     
-    def _validate_liquidation_hunt(self, features: AllFeatures) -> Optional[SignalDirection]:
-        """Validate Liquidation Hunt strategy"""
+    def _validate_liquidation_hunt(
+        self, 
+        features: AllFeatures, 
+        regime: RegimeResult
+    ) -> Optional[SignalDirection]:
+        """
+        Validate Liquidation Hunt strategy.
+        
+        CRITICAL: Direction MUST align with regime!
+        - TRENDING_UP → Only hunt short liquidations (LONG)
+        - TRENDING_DOWN → Only hunt long liquidations (SHORT)
+        - RANGING/HIGH_VOLATILITY → Hunt both based on zone proximity
+        """
         liq = features.liquidation
         micro = features.microstructure
         
-        # Large short liq zone above (hunt shorts)
+        # Trong TRENDING_UP: Chỉ được LONG (hunt short liquidations)
+        if regime.regime_type == RegimeType.TRENDING_UP:
+            # Check short liq zone above (hunt shorts → go LONG)
+            if liq.distance_to_short_liq < 0.02 and liq.short_liq_density_2pct > 5000000:
+                if micro.orderbook_imbalance > 0.1 and micro.cvd_trend > 0:
+                    logger.info(f"Liquidation Hunt: LONG in TRENDING_UP (short liq zone: {liq.distance_to_short_liq:.3f})")
+                    return SignalDirection.LONG
+            # Không được SHORT trong TRENDING_UP!
+            return None
+        
+        # Trong TRENDING_DOWN: Chỉ được SHORT (hunt long liquidations)
+        if regime.regime_type == RegimeType.TRENDING_DOWN:
+            # Check long liq zone below (hunt longs → go SHORT)
+            if liq.distance_to_long_liq < 0.02 and liq.long_liq_density_2pct > 5000000:
+                if micro.orderbook_imbalance < -0.1 and micro.cvd_trend < 0:
+                    logger.info(f"Liquidation Hunt: SHORT in TRENDING_DOWN (long liq zone: {liq.distance_to_long_liq:.3f})")
+                    return SignalDirection.SHORT
+            # Không được LONG trong TRENDING_DOWN!
+            return None
+        
+        # Trong RANGING hoặc HIGH_VOLATILITY: Có thể hunt cả hai
+        # Ưu tiên zone nào gần hơn VÀ có setup rõ ràng hơn
+        
+        # Large short liq zone above (hunt shorts → LONG)
         if liq.distance_to_short_liq < 0.02 and liq.short_liq_density_2pct > 5000000:
-            # Check for accumulation
             if micro.orderbook_imbalance > 0.1 and micro.cvd_trend > 0:
+                logger.info(f"Liquidation Hunt: LONG in {regime.regime_type.value} (short liq zone)")
                 return SignalDirection.LONG
         
-        # Large long liq zone below (hunt longs)
+        # Large long liq zone below (hunt longs → SHORT)
         if liq.distance_to_long_liq < 0.02 and liq.long_liq_density_2pct > 5000000:
-            # Check for distribution
             if micro.orderbook_imbalance < -0.1 and micro.cvd_trend < 0:
+                logger.info(f"Liquidation Hunt: SHORT in {regime.regime_type.value} (long liq zone)")
                 return SignalDirection.SHORT
         
         return None
     
-    def _validate_funding_fade(self, features: AllFeatures) -> Optional[SignalDirection]:
-        """Validate Funding Fade strategy"""
+    def _validate_funding_fade(
+        self, 
+        features: AllFeatures, 
+        regime: RegimeResult
+    ) -> Optional[SignalDirection]:
+        """
+        Validate Funding Fade strategy.
+        
+        CRITICAL: Direction MUST align with regime!
+        - TRENDING_UP → Only LONG (fade negative funding)
+        - TRENDING_DOWN → Only SHORT (fade positive funding)
+        - RANGING/HIGH_VOLATILITY → Both allowed based on funding extreme
+        
+        Exception: Allow counter-trend if exhaustion_risk > 0.7
+        """
         funding = features.funding
         tech = features.technical
-        onchain = features.onchain
         
         if not funding:
             return None
         
+        # Check exhaustion for counter-trend exception
+        allow_counter_trend = regime.exhaustion_risk > 0.7
+        
+        # Trong TRENDING_UP: Chỉ được LONG (fade negative funding)
+        if regime.regime_type == RegimeType.TRENDING_UP:
+            # Extreme negative funding → LONG (align với trend)
+            if funding.funding_current < -0.001:
+                if tech.rsi_14 < 50:  # Not overbought
+                    logger.info(f"Funding Fade: LONG in TRENDING_UP (funding: {funding.funding_current:.4f})")
+                    return SignalDirection.LONG
+            # Extreme positive funding → SHORT (counter-trend)
+            if funding.funding_current > 0.001 and allow_counter_trend:
+                if tech.rsi_14 > 70:  # Overbought + exhaustion
+                    logger.info(f"Funding Fade: SHORT in TRENDING_UP (counter-trend, exhaustion: {regime.exhaustion_risk:.2f})")
+                    return SignalDirection.SHORT
+            return None
+        
+        # Trong TRENDING_DOWN: Chỉ được SHORT (fade positive funding)
+        if regime.regime_type == RegimeType.TRENDING_DOWN:
+            # Extreme positive funding → SHORT (align với trend)
+            if funding.funding_current > 0.001:
+                if tech.rsi_14 > 50:  # Not oversold
+                    logger.info(f"Funding Fade: SHORT in TRENDING_DOWN (funding: {funding.funding_current:.4f})")
+                    return SignalDirection.SHORT
+            # Extreme negative funding → LONG (counter-trend)
+            if funding.funding_current < -0.001 and allow_counter_trend:
+                if tech.rsi_14 < 30:  # Oversold + exhaustion
+                    logger.info(f"Funding Fade: LONG in TRENDING_DOWN (counter-trend, exhaustion: {regime.exhaustion_risk:.2f})")
+                    return SignalDirection.LONG
+            return None
+        
+        # Trong RANGING hoặc HIGH_VOLATILITY: Cả hai direction OK
         # Extreme positive funding → SHORT
         if funding.funding_current > 0.001:
-            # Need weakness signs
             if tech.rsi_14 > 60:  # RSI divergence
+                logger.info(f"Funding Fade: SHORT in {regime.regime_type.value} (funding: {funding.funding_current:.4f})")
                 return SignalDirection.SHORT
         
         # Extreme negative funding → LONG
         if funding.funding_current < -0.001:
-            # Need strength signs
             if tech.rsi_14 < 40:
+                logger.info(f"Funding Fade: LONG in {regime.regime_type.value} (funding: {funding.funding_current:.4f})")
                 return SignalDirection.LONG
         
         return None
