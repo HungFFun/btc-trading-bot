@@ -29,14 +29,13 @@ class VersionInfo:
 CURRENT_VERSION = VersionInfo(
     major=5,
     minor=0,
-    patch=4,
+    patch=5,
     build_date="2026-01-01",
     changelog=[
-        "✨ [NEW] Interactive menu với inline buttons",
-        "✨ [NEW] /menu command hiển thị menu buttons",
-        "🔴 [CRITICAL] Fixed: Gate 2 validates direction vs regime",
-        "🔴 [CRITICAL] Fixed: Strategies respect regime direction",
-        "✨ [NEW] Added: /version command",
+        "✨ [NEW] Menu buttons hiện ngay khi bot start",
+        "✨ [NEW] Interactive inline keyboard buttons",
+        "🔴 [CRITICAL] Fixed: Direction vs regime validation",
+        "✨ [NEW] Added: /version, /menu commands",
     ]
 )
 

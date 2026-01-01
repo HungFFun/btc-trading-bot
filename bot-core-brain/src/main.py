@@ -150,14 +150,8 @@ class CoreBrainBot:
         # Wait for initial data
         await asyncio.sleep(5)
         
-        # Send startup notification with version
-        startup_msg = f"""🤖 <b>Core Brain Bot Started!</b>
-
-📦 Version: <code>{get_full_version()}</code>
-
-Use /help to see available commands.
-Use /version to see changelog."""
-        await self.telegram.send_message(startup_msg)
+        # Send startup notification with interactive menu
+        await self._send_startup_menu()
         
         try:
             await self._main_loop()
@@ -439,6 +433,35 @@ Use /version to see changelog."""
         # Mark as analyzed
         for result in results:
             self.db.mark_signal_analyzed(result.signal_id)
+    
+    async def _send_startup_menu(self):
+        """Send startup message with interactive menu buttons"""
+        keyboard = {
+            "inline_keyboard": [
+                [
+                    {"text": "📊 Status", "callback_data": "status"},
+                    {"text": "📅 Daily", "callback_data": "daily"},
+                ],
+                [
+                    {"text": "📈 Regime", "callback_data": "regime"},
+                    {"text": "📦 Version", "callback_data": "version"},
+                ],
+                [
+                    {"text": "❓ Help", "callback_data": "help"},
+                ],
+            ]
+        }
+        
+        message = f"""
+🤖 <b>Core Brain Bot Started!</b>
+═══════════════════════════
+
+📦 Version: <code>{get_full_version()}</code>
+⏰ Time: {datetime.utcnow().strftime('%H:%M:%S')} UTC
+
+<b>Chọn một tùy chọn bên dưới:</b>
+"""
+        await self.telegram_commands.send_message(message.strip(), reply_markup=keyboard)
 
 
 async def main():

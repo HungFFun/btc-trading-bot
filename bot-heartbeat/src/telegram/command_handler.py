@@ -37,7 +37,9 @@ class TelegramCommandHandler:
         if self._session and not self._session.closed:
             await self._session.close()
 
-    async def send_message(self, text: str, parse_mode: str = "HTML", reply_markup: dict = None) -> bool:
+    async def send_message(
+        self, text: str, parse_mode: str = "HTML", reply_markup: dict = None
+    ) -> bool:
         """Send a message to the chat"""
         if not self.enabled or not self.token or not self.chat_id:
             return False
@@ -46,7 +48,7 @@ class TelegramCommandHandler:
             session = await self._get_session()
             url = f"{self.base_url}/sendMessage"
             data = {"chat_id": self.chat_id, "text": text, "parse_mode": parse_mode}
-            
+
             if reply_markup:
                 data["reply_markup"] = reply_markup
 
@@ -87,7 +89,7 @@ class TelegramCommandHandler:
         except Exception as e:
             logger.error(f"Failed to get updates: {e}")
             return []
-    
+
     async def answer_callback_query(self, callback_query_id: str, text: str = None):
         """Answer a callback query"""
         try:
@@ -96,7 +98,7 @@ class TelegramCommandHandler:
             data = {"callback_query_id": callback_query_id}
             if text:
                 data["text"] = text
-            
+
             async with session.post(url, json=data) as response:
                 return response.status == 200
         except Exception as e:
@@ -112,7 +114,7 @@ class TelegramCommandHandler:
             logger.warning(f"Ignoring command from unauthorized chat: {chat_id}")
             return
 
-        command = command.lower().strip().split('@')[0]  # Remove @botname if present
+        command = command.lower().strip().split("@")[0]  # Remove @botname if present
 
         if command == "/health":
             await self.cmd_health()
@@ -128,20 +130,20 @@ class TelegramCommandHandler:
             await self.send_message(
                 f"❓ Unknown command: {command}\n\nUse /menu to see available commands."
             )
-    
+
     async def handle_callback(self, callback_query: dict):
         """Handle inline button callbacks"""
         callback_id = callback_query.get("id")
         data = callback_query.get("data", "")
         chat_id = str(callback_query.get("message", {}).get("chat", {}).get("id", ""))
-        
+
         # Only respond to configured chat_id
         if chat_id != self.chat_id:
             return
-        
+
         # Answer callback to remove loading state
         await self.answer_callback_query(callback_id)
-        
+
         # Route to appropriate handler
         if data == "health":
             await self.cmd_health()
@@ -153,22 +155,22 @@ class TelegramCommandHandler:
             await self.cmd_help()
         elif data == "menu":
             await self.cmd_menu()
-    
+
     async def cmd_menu(self):
         """Show interactive menu with inline buttons"""
         keyboard = {
             "inline_keyboard": [
                 [
                     {"text": "🏥 Health", "callback_data": "health"},
-                    {"text": "📊 Today", "callback_data": "today"}
+                    {"text": "📊 Today", "callback_data": "today"},
                 ],
                 [
                     {"text": "📦 Version", "callback_data": "version"},
-                    {"text": "❓ Help", "callback_data": "help"}
-                ]
+                    {"text": "❓ Help", "callback_data": "help"},
+                ],
             ]
         }
-        
+
         message = f"""
 💓 <b>BTC Trading Bot - Heartbeat</b>
 ═══════════════════════════
@@ -453,7 +455,7 @@ class TelegramCommandHandler:
                     if text.startswith("/"):
                         logger.info(f"Received command: {text}")
                         await self.handle_command(text, message)
-                    
+
                     # Handle callback queries (inline button clicks)
                     callback_query = update.get("callback_query")
                     if callback_query:

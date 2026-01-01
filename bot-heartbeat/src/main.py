@@ -118,8 +118,8 @@ class HeartbeatBot:
         self._command_task = asyncio.create_task(self.telegram_commands.start_polling())
         logger.info("✅ Telegram command handler started")
 
-        # Send startup notification
-        await self.telegram.send_message("🔔 Heartbeat Monitor started!\n\nUse /help to see available commands.")
+        # Send startup notification with interactive menu
+        await self._send_startup_menu()
 
         try:
             await self._main_loop()
@@ -276,6 +276,34 @@ class HeartbeatBot:
         report = self.report_generator.generate_weekly_report()
         await self.telegram.send_weekly_report(report)
         self._last_weekly_report = date.today().isoformat()
+
+    async def _send_startup_menu(self):
+        """Send startup message with interactive menu buttons"""
+        from config.version import get_full_version
+        
+        keyboard = {
+            "inline_keyboard": [
+                [
+                    {"text": "🏥 Health", "callback_data": "health"},
+                    {"text": "📊 Today", "callback_data": "today"},
+                ],
+                [
+                    {"text": "📦 Version", "callback_data": "version"},
+                    {"text": "❓ Help", "callback_data": "help"},
+                ],
+            ]
+        }
+        
+        message = f"""
+🔔 <b>Heartbeat Monitor Started!</b>
+═══════════════════════════
+
+📦 Version: <code>{get_full_version()}</code>
+⏰ Time: {datetime.utcnow().strftime('%H:%M:%S')} UTC
+
+<b>Chọn một tùy chọn bên dưới:</b>
+"""
+        await self.telegram_commands.send_message(message.strip(), reply_markup=keyboard)
 
 
 async def main():
