@@ -86,7 +86,10 @@ class TelegramCommandHandler:
             ) as response:
                 if response.status == 200:
                     data = await response.json()
-                    return data.get("result", [])
+                    results = data.get("result", [])
+                    if results:
+                        logger.info(f"📥 Received {len(results)} update(s)")
+                    return results
                 else:
                     error = await response.text()
                     logger.error(f"Get updates error: {error}")
@@ -443,6 +446,11 @@ class TelegramCommandHandler:
 
     async def start_polling(self):
         """Start polling for commands"""
+        logger.info(f"=== START POLLING ===")
+        logger.info(f"Enabled: {self.enabled}")
+        logger.info(f"Token: {self.token[:10]}..." if self.token else "Token: None")
+        logger.info(f"Chat ID: {self.chat_id}")
+        
         if not self.enabled or not self.token:
             logger.info("Command handler disabled or not configured")
             return

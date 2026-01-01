@@ -281,6 +281,8 @@ class HeartbeatBot:
         """Send startup message with interactive menu buttons"""
         from config.version import get_full_version
         
+        logger.info("=== SENDING STARTUP MENU ===")
+        
         keyboard = {
             "inline_keyboard": [
                 [
@@ -294,6 +296,8 @@ class HeartbeatBot:
             ]
         }
         
+        logger.info(f"Keyboard: {keyboard}")
+        
         message = f"""
 🔔 <b>Heartbeat Monitor Started!</b>
 ═══════════════════════════
@@ -303,7 +307,8 @@ class HeartbeatBot:
 
 <b>Chọn một tùy chọn bên dưới:</b>
 """
-        await self.telegram_commands.send_message(message.strip(), reply_markup=keyboard)
+        result = await self.telegram_commands.send_message(message.strip(), reply_markup=keyboard)
+        logger.info(f"Startup menu send result: {result}")
 
 
 async def main():

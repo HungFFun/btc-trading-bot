@@ -29,12 +29,12 @@ class VersionInfo:
 CURRENT_VERSION = VersionInfo(
     major=5,
     minor=0,
-    patch=7,
+    patch=8,
     build_date="2026-01-01",
     changelog=[
-        "🔧 [FIX] Fixed inline keyboard - removed double JSON serialization",
+        "🔧 [FIX] Fixed inline keyboard - reply_markup as dict not JSON string",
+        "🔧 [FIX] Added extensive debug logging for polling & commands",
         "🔧 [FIX] Improved chat_id comparison logic",
-        "🔧 [FIX] Added debug logging for command handling",
         "✨ [NEW] Menu buttons hiện ngay khi bot start",
     ]
 )

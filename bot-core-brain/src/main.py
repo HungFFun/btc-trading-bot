@@ -436,6 +436,8 @@ class CoreBrainBot:
     
     async def _send_startup_menu(self):
         """Send startup message with interactive menu buttons"""
+        logger.info("=== SENDING STARTUP MENU ===")
+        
         keyboard = {
             "inline_keyboard": [
                 [
@@ -452,6 +454,8 @@ class CoreBrainBot:
             ]
         }
         
+        logger.info(f"Keyboard: {keyboard}")
+        
         message = f"""
 🤖 <b>Core Brain Bot Started!</b>
 ═══════════════════════════
@@ -461,7 +465,8 @@ class CoreBrainBot:
 
 <b>Chọn một tùy chọn bên dưới:</b>
 """
-        await self.telegram_commands.send_message(message.strip(), reply_markup=keyboard)
+        result = await self.telegram_commands.send_message(message.strip(), reply_markup=keyboard)
+        logger.info(f"Startup menu send result: {result}")
 
 
 async def main():
