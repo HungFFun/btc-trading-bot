@@ -29,13 +29,13 @@ class VersionInfo:
 CURRENT_VERSION = VersionInfo(
     major=5,
     minor=0,
-    patch=3,
+    patch=4,
     build_date="2026-01-01",
     changelog=[
-        "✨ [NEW] Auto-update Telegram bot menu on startup",
+        "✨ [NEW] Interactive menu với inline buttons",
+        "✨ [NEW] /menu command hiển thị menu buttons",
         "🔴 [CRITICAL] Fixed: Gate 2 validates direction vs regime",
         "🔴 [CRITICAL] Fixed: Strategies respect regime direction",
-        "🟡 [HIGH] Fixed: AI mock prediction logic",
         "✨ [NEW] Added: /version command",
     ]
 )

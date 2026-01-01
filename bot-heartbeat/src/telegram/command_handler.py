@@ -37,7 +37,7 @@ class TelegramCommandHandler:
         if self._session and not self._session.closed:
             await self._session.close()
 
-    async def send_message(self, text: str, parse_mode: str = "HTML") -> bool:
+    async def send_message(self, text: str, parse_mode: str = "HTML", reply_markup: dict = None) -> bool:
         """Send a message to the chat"""
         if not self.enabled or not self.token or not self.chat_id:
             return False
@@ -46,6 +46,9 @@ class TelegramCommandHandler:
             session = await self._get_session()
             url = f"{self.base_url}/sendMessage"
             data = {"chat_id": self.chat_id, "text": text, "parse_mode": parse_mode}
+            
+            if reply_markup:
+                data["reply_markup"] = reply_markup
 
             async with session.post(url, json=data) as response:
                 if response.status == 200:
@@ -66,7 +69,7 @@ class TelegramCommandHandler:
             params = {
                 "offset": self._last_update_id + 1,
                 "timeout": timeout,
-                "allowed_updates": ["message"],
+                "allowed_updates": ["message", "callback_query"],
             }
 
             async with session.get(
@@ -84,6 +87,21 @@ class TelegramCommandHandler:
         except Exception as e:
             logger.error(f"Failed to get updates: {e}")
             return []
+    
+    async def answer_callback_query(self, callback_query_id: str, text: str = None):
+        """Answer a callback query"""
+        try:
+            session = await self._get_session()
+            url = f"{self.base_url}/answerCallbackQuery"
+            data = {"callback_query_id": callback_query_id}
+            if text:
+                data["text"] = text
+            
+            async with session.post(url, json=data) as response:
+                return response.status == 200
+        except Exception as e:
+            logger.error(f"Failed to answer callback: {e}")
+            return False
 
     async def handle_command(self, command: str, message_data: dict):
         """Route commands to appropriate handlers"""
@@ -94,7 +112,7 @@ class TelegramCommandHandler:
             logger.warning(f"Ignoring command from unauthorized chat: {chat_id}")
             return
 
-        command = command.lower().strip()
+        command = command.lower().strip().split('@')[0]  # Remove @botname if present
 
         if command == "/health":
             await self.cmd_health()
@@ -104,12 +122,62 @@ class TelegramCommandHandler:
             await self.cmd_version()
         elif command == "/help":
             await self.cmd_help()
-        elif command == "/start":
-            await self.cmd_help()
+        elif command == "/start" or command == "/menu":
+            await self.cmd_menu()
         else:
             await self.send_message(
-                f"❓ Unknown command: {command}\n\nUse /help to see available commands."
+                f"❓ Unknown command: {command}\n\nUse /menu to see available commands."
             )
+    
+    async def handle_callback(self, callback_query: dict):
+        """Handle inline button callbacks"""
+        callback_id = callback_query.get("id")
+        data = callback_query.get("data", "")
+        chat_id = str(callback_query.get("message", {}).get("chat", {}).get("id", ""))
+        
+        # Only respond to configured chat_id
+        if chat_id != self.chat_id:
+            return
+        
+        # Answer callback to remove loading state
+        await self.answer_callback_query(callback_id)
+        
+        # Route to appropriate handler
+        if data == "health":
+            await self.cmd_health()
+        elif data == "today":
+            await self.cmd_today()
+        elif data == "version":
+            await self.cmd_version()
+        elif data == "help":
+            await self.cmd_help()
+        elif data == "menu":
+            await self.cmd_menu()
+    
+    async def cmd_menu(self):
+        """Show interactive menu with inline buttons"""
+        keyboard = {
+            "inline_keyboard": [
+                [
+                    {"text": "🏥 Health", "callback_data": "health"},
+                    {"text": "📊 Today", "callback_data": "today"}
+                ],
+                [
+                    {"text": "📦 Version", "callback_data": "version"},
+                    {"text": "❓ Help", "callback_data": "help"}
+                ]
+            ]
+        }
+        
+        message = f"""
+💓 <b>BTC Trading Bot - Heartbeat</b>
+═══════════════════════════
+
+📦 Version: <code>{get_full_version()}</code>
+
+<b>Chọn một trong các tùy chọn bên dưới:</b>
+"""
+        await self.send_message(message.strip(), reply_markup=keyboard)
 
     async def cmd_health(self):
         """Handle /health command"""
@@ -335,6 +403,7 @@ class TelegramCommandHandler:
             return False
 
         commands = [
+            {"command": "menu", "description": "📱 Hiển thị menu"},
             {"command": "health", "description": "🏥 Kiểm tra sức khỏe bot"},
             {"command": "today", "description": "📊 Kết quả hôm nay"},
             {"command": "version", "description": "📦 Phiên bản bot"},
@@ -377,12 +446,19 @@ class TelegramCommandHandler:
                 for update in updates:
                     self._last_update_id = update.get("update_id", 0)
 
+                    # Handle regular messages/commands
                     message = update.get("message", {})
                     text = message.get("text", "")
 
                     if text.startswith("/"):
                         logger.info(f"Received command: {text}")
                         await self.handle_command(text, message)
+                    
+                    # Handle callback queries (inline button clicks)
+                    callback_query = update.get("callback_query")
+                    if callback_query:
+                        logger.info(f"Received callback: {callback_query.get('data')}")
+                        await self.handle_callback(callback_query)
 
                 # Small delay to avoid hammering the API
                 if not updates:
