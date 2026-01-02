@@ -172,33 +172,41 @@ class CoreBrainBot:
             data = self.binance.get_data()
             
             if not data or not data.last_price:
+                logger.warning("No market data available for predictor")
                 return None
             
-            # Convert klines to predictor format
-            candles = {}
-            for tf, klines in data.klines.items():
-                if klines:
-                    candles[tf] = [
+            # Convert candles to predictor format
+            # data.candles is Dict[str, deque[Candle]]
+            candles_dict = {}
+            
+            for tf in ['5m', '15m', '1m', '3m']:
+                if tf in data.candles and len(data.candles[tf]) > 0:
+                    candles_dict[tf] = [
                         {
-                            'open': k.open,
-                            'high': k.high,
-                            'low': k.low,
-                            'close': k.close,
-                            'volume': k.volume
+                            'open': c.open,
+                            'high': c.high,
+                            'low': c.low,
+                            'close': c.close,
+                            'volume': c.volume
                         }
-                        for k in klines
+                        for c in data.candles[tf]
                     ]
+            
+            # Get funding rate from FundingRate object
+            funding_rate = 0
+            if data.funding:
+                funding_rate = data.funding.funding_rate
             
             return {
                 'current_price': data.last_price,
-                'candles': candles,
-                'funding_rate': getattr(data, 'funding_rate', 0),
-                'long_short_ratio': getattr(data, 'long_short_ratio', None),
-                'oi_change_pct': getattr(data, 'oi_change_pct', None),
-                'price_change_pct': getattr(data, 'price_change_24h', None)
+                'candles': candles_dict,
+                'funding_rate': funding_rate,
+                'long_short_ratio': None,
+                'oi_change_pct': None,
+                'price_change_pct': None
             }
         except Exception as e:
-            logger.error(f"Failed to get market data for predictor: {e}")
+            logger.error(f"Failed to get market data for predictor: {e}", exc_info=True)
             return None
     
     async def start(self):

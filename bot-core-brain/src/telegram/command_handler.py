@@ -563,45 +563,56 @@ Module phân tích và dự đoán hướng BTC
             # Try to get data from binance client
             if self.binance:
                 data = self.binance.get_data()
+                logger.info(f"Binance data: last_price={data.last_price if data else 'None'}")
+                
                 if data and data.last_price:
-                    # Convert to predictor format
-                    candles = []
-                    for tf, klines in data.klines.items():
-                        if klines:
-                            candles = [
+                    # Convert candles to predictor format
+                    # data.candles is Dict[str, deque[Candle]]
+                    candles_dict = {}
+                    
+                    for tf in ['5m', '15m', '1m']:
+                        if tf in data.candles and len(data.candles[tf]) > 0:
+                            candles_dict[tf] = [
                                 {
-                                    'open': k.open,
-                                    'high': k.high,
-                                    'low': k.low,
-                                    'close': k.close,
-                                    'volume': k.volume
+                                    'open': c.open,
+                                    'high': c.high,
+                                    'low': c.low,
+                                    'close': c.close,
+                                    'volume': c.volume
                                 }
-                                for k in klines
+                                for c in data.candles[tf]
                             ]
-                            break
+                            logger.info(f"Got {len(candles_dict[tf])} candles for {tf}")
+                    
+                    # Get funding rate
+                    funding_rate = 0
+                    if data.funding:
+                        funding_rate = data.funding.funding_rate
                     
                     return {
                         'current_price': data.last_price,
-                        'candles': {'5m': candles} if candles else {},
-                        'funding_rate': getattr(data, 'funding_rate', 0),
-                        'long_short_ratio': getattr(data, 'long_short_ratio', None),
-                        'oi_change_pct': getattr(data, 'oi_change_pct', None),
-                        'price_change_pct': getattr(data, 'price_change_24h', None)
+                        'candles': candles_dict,
+                        'funding_rate': funding_rate,
+                        'long_short_ratio': None,  # Not available from basic binance data
+                        'oi_change_pct': None,
+                        'price_change_pct': None
                     }
             
             # Fallback: use feature engine
-            if self.feature_engine and self.feature_engine.latest_features:
+            if self.feature_engine and hasattr(self.feature_engine, 'latest_features') and self.feature_engine.latest_features:
                 features = self.feature_engine.latest_features
+                logger.info("Using feature engine for predictor data")
                 return {
                     'current_price': features.get('close', 0),
-                    'candles': {},  # Would need to be populated
+                    'candles': {},
                     'funding_rate': features.get('funding_rate', 0)
                 }
             
+            logger.warning("No data source available for predictor")
             return None
             
         except Exception as e:
-            logger.error(f"Failed to get market data for predictor: {e}")
+            logger.error(f"Failed to get market data for predictor: {e}", exc_info=True)
             return None
     
     async def cmd_help(self):
