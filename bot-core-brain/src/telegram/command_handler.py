@@ -167,6 +167,8 @@ class TelegramCommandHandler:
             await self.cmd_predictor_toggle(True)
         elif command == "/predictor_off":
             await self.cmd_predictor_toggle(False)
+        elif command == "/legend":
+            await self.cmd_legend()
         else:
             await self.send_message(f"❓ Unknown command: {command}\n\nUse /menu to see available commands.")
     
@@ -200,6 +202,8 @@ class TelegramCommandHandler:
             await self.cmd_predict()
         elif data == "last_predict":
             await self.cmd_last_predict()
+        elif data == "legend":
+            await self.cmd_legend()
         elif data == "predictor_toggle":
             if self.predictor:
                 await self.cmd_predictor_toggle(not self.predictor.is_enabled)
@@ -442,7 +446,7 @@ class TelegramCommandHandler:
     async def cmd_predictor_menu(self):
         """Show predictor sub-menu"""
         predictor_status = "🟢 ON" if (self.predictor and self.predictor.is_enabled) else "🔴 OFF"
-        toggle_text = "🔴 Tắt Predictor" if (self.predictor and self.predictor.is_enabled) else "🟢 Bật Predictor"
+        toggle_text = "🔴 Tắt" if (self.predictor and self.predictor.is_enabled) else "🟢 Bật"
         
         keyboard = {
             "inline_keyboard": [
@@ -450,13 +454,12 @@ class TelegramCommandHandler:
                     {"text": "🔮 Dự đoán ngay", "callback_data": "predict"}
                 ],
                 [
-                    {"text": "📊 Dự đoán gần nhất", "callback_data": "last_predict"}
+                    {"text": "📊 Gần nhất", "callback_data": "last_predict"},
+                    {"text": "📖 Chú thích", "callback_data": "legend"}
                 ],
                 [
-                    {"text": toggle_text, "callback_data": "predictor_toggle"}
-                ],
-                [
-                    {"text": "⬅️ Quay lại Menu", "callback_data": "menu"}
+                    {"text": toggle_text, "callback_data": "predictor_toggle"},
+                    {"text": "⬅️ Menu", "callback_data": "menu"}
                 ]
             ]
         }
@@ -467,16 +470,12 @@ class TelegramCommandHandler:
 
 <b>Status:</b> {predictor_status}
 
-<b>Predictor là gì?</b>
-Module phân tích và dự đoán hướng BTC 
-(LONG/SHORT) dựa trên:
-├── Technical: RSI, MACD, EMA, BB, ADX
-├── Structure: Support/Resistance
-└── Sentiment: Funding, L/S Ratio
+<b>Indicators:</b>
+├── RSI, MACD, EMA, BB, ADX
+├── Support/Resistance
+└── Funding, L/S Ratio
 
 ⚡ <b>Chỉ là GỢI Ý - Không tự động trade</b>
-
-<b>Chọn một tùy chọn:</b>
 """
         await self.send_message(message.strip(), reply_markup=keyboard)
     
@@ -495,30 +494,62 @@ Module phân tích và dự đoán hướng BTC
         try:
             # Get market data
             market_data = await self._get_market_data_for_predictor()
+            logger.info(f"Market data for predictor: price={market_data.get('current_price') if market_data else 'None'}")
             
             if not market_data:
                 await self.send_message("❌ Không thể lấy dữ liệu thị trường. Bot chưa kết nối Binance.")
                 return
             
             # Check if we have candles
-            if not market_data.get('candles') or all(len(v) == 0 for v in market_data['candles'].values()):
+            candles = market_data.get('candles', {})
+            candle_count = sum(len(v) for v in candles.values())
+            logger.info(f"Candle count: {candle_count}")
+            
+            if candle_count == 0:
                 await self.send_message("❌ Chưa có dữ liệu nến. Vui lòng chờ bot thu thập data (khoảng 1-2 phút sau khi khởi động).")
                 return
             
             # Run prediction
+            logger.info("Running predictor.predict()...")
             signal = await self.predictor.predict(market_data)
+            logger.info(f"Prediction result: {signal.direction.value if signal else 'None'}")
             
             if signal:
-                # Format and send
+                # Format and send - use compact format first
                 from src.predictor.signal_formatter import SignalFormatter
                 formatter = SignalFormatter({})
-                message = formatter.format_telegram_message(signal)
-                await self.send_message(message)
+                
+                try:
+                    # Try full message first
+                    message = formatter.format_telegram_message(signal)
+                    logger.info(f"Message length: {len(message)}")
+                    
+                    # If too long, use short version
+                    if len(message) > 4000:
+                        logger.info("Message too long, using short format")
+                        message = formatter.format_short_message(signal)
+                    
+                    result = await self.send_message(message)
+                    logger.info(f"Send result: {result}")
+                    
+                except Exception as format_error:
+                    logger.error(f"Format error: {format_error}", exc_info=True)
+                    # Fallback to minimal message
+                    emoji = "🟢" if signal.direction.value == "LONG" else "🔴"
+                    await self.send_message(
+                        f"🔮 <b>BTC PREDICTION</b>\n\n"
+                        f"{emoji} Direction: <b>{signal.direction.value}</b>\n"
+                        f"💰 Price: ${signal.current_price:,.2f}\n"
+                        f"🎯 Confidence: {signal.confidence:.0f}%\n"
+                        f"📊 Win Rate: {signal.win_probability:.0f}%\n\n"
+                        f"⚡ SUGGESTION ONLY"
+                    )
             else:
-                await self.send_message("❌ Không thể phân tích. Kiểm tra logs để biết chi tiết.")
+                logger.warning("Predictor returned None")
+                await self.send_message("❌ Không thể phân tích. Predictor trả về None.")
         except Exception as e:
             logger.error(f"Prediction failed: {e}", exc_info=True)
-            await self.send_message(f"❌ Lỗi khi dự đoán: {str(e)}")
+            await self.send_message(f"❌ Lỗi khi dự đoán: {str(e)[:100]}")
     
     async def cmd_last_predict(self):
         """Show last prediction"""
@@ -557,6 +588,58 @@ Module phân tích và dự đoán hướng BTC
         else:
             self.predictor.disable()
             await self.send_message("🔴 Predictor đã được <b>TẮT</b>")
+    
+    async def cmd_legend(self):
+        """Show indicator legend with LONG/SHORT thresholds"""
+        message = """
+📊 <b>INDICATOR LEGEND</b>
+═══════════════════════════
+
+<b>RSI (Relative Strength Index)</b>
+├── 🟢 &lt; 30 = Oversold → LONG
+├── 🔴 &gt; 70 = Overbought → SHORT
+└── ⚪ 30-70 = Neutral
+
+<b>MACD</b>
+├── 🟢 Histogram ↑ + Above Signal = LONG
+└── 🔴 Histogram ↓ + Below Signal = SHORT
+
+<b>EMA (9/21/50)</b>
+├── 🟢 EMA9 &gt; EMA21 &gt; EMA50 = LONG
+└── 🔴 EMA9 &lt; EMA21 &lt; EMA50 = SHORT
+
+<b>Bollinger Bands Position</b>
+├── 🟢 &lt; 20% (gần lower band) = LONG
+├── 🔴 &gt; 80% (gần upper band) = SHORT
+└── ⚪ 20-80% = Neutral
+
+<b>ADX (Average Directional Index)</b>
+├── 💪 &gt; 40 = Strong trend
+├── 📈 &gt; 25 = Trending
+├── 〰️ 15-25 = Weak trend
+└── ➖ &lt; 15 = No trend (sideway)
+
+<b>Funding Rate (Contrarian)</b>
+├── 🟢 &lt; -0.05% = Quá nhiều SHORT → LONG
+├── 🔴 &gt; 0.05% = Quá nhiều LONG → SHORT
+└── ⚪ -0.05% to 0.05% = Neutral
+
+<b>Volume</b>
+├── 📊 &gt; 1.5x = High (xác nhận trend)
+├── ⚠️ &lt; 0.5x = Very Low (không đáng tin)
+└── 📊 0.5-1.5x = Normal
+
+<b>Support/Resistance Level</b>
+├── 🟢 &lt; 30% (gần support) = LONG
+├── 🔴 &gt; 70% (gần resistance) = SHORT
+└── ⚪ 30-70% = Middle zone
+
+<b>Long/Short Ratio (Contrarian)</b>
+├── 🟢 &lt; 0.7 = Quá nhiều SHORT → LONG
+├── 🔴 &gt; 1.5 = Quá nhiều LONG → SHORT
+└── ⚪ 0.7-1.5 = Balanced
+"""
+        await self.send_message(message.strip())
     
     async def _get_market_data_for_predictor(self) -> Optional[Dict[str, Any]]:
         """Get market data for predictor - independent from core logic"""

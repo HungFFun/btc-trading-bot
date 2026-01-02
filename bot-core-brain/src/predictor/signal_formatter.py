@@ -139,7 +139,7 @@ class SignalFormatter:
         return mapping.get(strength, "⭐")
     
     def _format_indicators(self, indicators: Dict[str, float]) -> str:
-        """Format indicators dictionary with detailed annotations"""
+        """Format indicators dictionary with signal icons"""
         if not indicators:
             return "└── No indicator data"
         
@@ -150,53 +150,43 @@ class SignalFormatter:
             is_last = (i == len(indicator_names) - 1)
             prefix = "└──" if is_last else "├──"
             
-            # Format based on indicator type with detailed annotations
+            # Format based on indicator type - compact with signal
             if name == 'RSI':
-                signal, annotation = self._get_rsi_annotation(value)
+                signal, _ = self._get_rsi_annotation(value)
                 lines.append(f"{prefix} RSI: {value:.1f} {signal}")
-                lines.append(f"    {annotation}")
             elif name == 'MACD':
-                signal, annotation = self._get_macd_annotation(value)
+                signal, _ = self._get_macd_annotation(value)
                 lines.append(f"{prefix} MACD: {signal}")
-                lines.append(f"    {annotation}")
             elif name == 'EMA':
                 lines.append(f"{prefix} EMA9: ${value:,.0f}")
-                lines.append(f"    📗 EMA9 > EMA21 > EMA50 = LONG")
-                lines.append(f"    📕 EMA9 < EMA21 < EMA50 = SHORT")
             elif name == 'BB':
-                signal, annotation = self._get_bb_annotation(value)
+                signal, _ = self._get_bb_annotation(value)
                 lines.append(f"{prefix} BB: {value:.0f}% {signal}")
-                lines.append(f"    {annotation}")
             elif name == 'ADX':
-                signal, annotation = self._get_adx_annotation(value)
+                signal, _ = self._get_adx_annotation(value)
                 lines.append(f"{prefix} ADX: {value:.1f} {signal}")
-                lines.append(f"    {annotation}")
             elif name == 'Funding':
-                signal, annotation = self._get_funding_annotation(value)
+                signal, _ = self._get_funding_annotation(value)
                 lines.append(f"{prefix} Funding: {value:.4f}% {signal}")
-                lines.append(f"    {annotation}")
             elif name == 'Volume':
-                signal, annotation = self._get_volume_annotation(value)
+                signal, _ = self._get_volume_annotation(value)
                 lines.append(f"{prefix} Volume: {value:.1f}x {signal}")
-                lines.append(f"    {annotation}")
             elif name == 'Structure':
                 lines.append(f"{prefix} Structure: {value:.0f}")
-                lines.append(f"    📗 HH+HL (Higher High/Low) = LONG")
-                lines.append(f"    📕 LH+LL (Lower High/Low) = SHORT")
             elif name == 'SR_Level':
-                signal, annotation = self._get_sr_annotation(value)
-                lines.append(f"{prefix} S/R Level: {value:.0f}% {signal}")
-                lines.append(f"    {annotation}")
+                signal, _ = self._get_sr_annotation(value)
+                lines.append(f"{prefix} S/R: {value:.0f}% {signal}")
             elif name == 'LS_Ratio':
-                signal, annotation = self._get_ls_ratio_annotation(value)
-                lines.append(f"{prefix} L/S Ratio: {value:.2f} {signal}")
-                lines.append(f"    {annotation}")
+                signal, _ = self._get_ls_ratio_annotation(value)
+                lines.append(f"{prefix} L/S: {value:.2f} {signal}")
             elif name == 'OI_Change':
-                lines.append(f"{prefix} OI Change: {value:+.1f}%")
-                lines.append(f"    📗 OI↑ + Price↑ = LONG tiếp tục")
-                lines.append(f"    📕 OI↑ + Price↓ = SHORT tiếp tục")
+                lines.append(f"{prefix} OI: {value:+.1f}%")
             else:
                 lines.append(f"{prefix} {name}: {value:.2f}")
+        
+        # Add legend at end
+        lines.append("")
+        lines.append("📗=LONG 📕=SHORT ⚪=Neutral")
         
         return "\n".join(lines)
     
