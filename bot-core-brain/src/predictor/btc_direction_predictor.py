@@ -74,7 +74,7 @@ class BTCDirectionPredictor:
                 - orderbook: dict (optional)
         
         Returns:
-            PredictionSignal if conditions met, None otherwise
+            PredictionSignal - Always returns LONG or SHORT
         """
         if not self.is_enabled:
             logger.debug("Predictor is disabled")
@@ -87,25 +87,22 @@ class BTCDirectionPredictor:
             analysis = self.engine.analyze(market_data)
             
             if analysis is None:
-                logger.debug("Analysis returned None")
+                logger.warning("Analysis returned None - insufficient data")
                 return None
             
-            # 2. Check minimum score threshold
-            min_score = self.config.get('thresholds', {}).get('min_score', 30)
-            if abs(analysis['score']) < min_score:
-                logger.info(f"Score {analysis['score']:.1f} below threshold {min_score}")
-                return None
+            # 2. Force direction to LONG or SHORT (never NEUTRAL)
+            if analysis['direction'] == Direction.NEUTRAL:
+                # Use score to decide - positive = LONG, negative = SHORT
+                if analysis['score'] >= 0:
+                    analysis['direction'] = Direction.LONG
+                else:
+                    analysis['direction'] = Direction.SHORT
+                logger.info(f"Forced direction from NEUTRAL to {analysis['direction'].value} (score: {analysis['score']:.1f})")
             
             # 3. Calculate confidence
             confidence = self.confidence_calc.calculate(analysis)
             
-            # 4. Check confidence threshold
-            min_confidence = self.config.get('thresholds', {}).get('min_confidence', 60)
-            if confidence.overall_confidence < min_confidence:
-                logger.info(f"Confidence {confidence.overall_confidence:.1f}% below threshold {min_confidence}%")
-                return None
-            
-            # 5. Build prediction signal
+            # 4. Build prediction signal (no thresholds - always output)
             signal = self._build_signal(market_data, analysis, confidence)
             
             # Track
@@ -117,12 +114,13 @@ class BTCDirectionPredictor:
             return signal
             
         except Exception as e:
-            logger.error(f"Prediction failed: {e}")
+            logger.error(f"Prediction failed: {e}", exc_info=True)
             return None
     
     async def predict_and_notify(self, market_data: Dict[str, Any]) -> Optional[PredictionSignal]:
         """
         Generate prediction and send Telegram notification
+        Always sends LONG or SHORT (no NEUTRAL)
         
         Args:
             market_data: Market data dictionary
@@ -135,19 +133,12 @@ class BTCDirectionPredictor:
         if signal is None:
             return None
         
-        # Only notify for LONG/SHORT, not NEUTRAL
-        if signal.direction == Direction.NEUTRAL:
-            send_neutral = self.config.get('telegram', {}).get('send_neutral', False)
-            if not send_neutral:
-                logger.info("Skipping notification for NEUTRAL signal")
-                return signal
-        
-        # Send notification
+        # Send notification (always LONG or SHORT now)
         if self.telegram:
             try:
                 message = self.formatter.format_telegram_message(signal)
                 await self.telegram.send_message(message)
-                logger.info("📤 Prediction notification sent")
+                logger.info(f"📤 Prediction notification sent: {signal.direction.value}")
             except Exception as e:
                 logger.error(f"Failed to send prediction notification: {e}")
         

@@ -127,12 +127,12 @@ class PredictionEngine:
         return weighted_score / total_weight * (len(components) / 3)  # Normalize
     
     def _determine_direction(self, score: float) -> Direction:
-        """Determine direction from score"""
-        if score > 20:
+        """Determine direction from score - Always LONG or SHORT"""
+        # No neutral zone - positive = LONG, negative/zero = SHORT
+        if score >= 0:
             return Direction.LONG
-        elif score < -20:
+        else:
             return Direction.SHORT
-        return Direction.NEUTRAL
     
     def _extract_indicators(self, components: List[AnalysisComponent]) -> Dict[str, float]:
         """Extract all indicator values for summary"""

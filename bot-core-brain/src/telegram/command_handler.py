@@ -481,7 +481,7 @@ Module phân tích và dự đoán hướng BTC
         await self.send_message(message.strip(), reply_markup=keyboard)
     
     async def cmd_predict(self):
-        """Generate prediction now"""
+        """Generate prediction now - Always returns LONG or SHORT"""
         if not self.predictor:
             await self.send_message("❌ Predictor chưa được khởi tạo. Vui lòng khởi động lại bot.")
             return
@@ -497,7 +497,12 @@ Module phân tích và dự đoán hướng BTC
             market_data = await self._get_market_data_for_predictor()
             
             if not market_data:
-                await self.send_message("❌ Không thể lấy dữ liệu thị trường")
+                await self.send_message("❌ Không thể lấy dữ liệu thị trường. Bot chưa kết nối Binance.")
+                return
+            
+            # Check if we have candles
+            if not market_data.get('candles') or all(len(v) == 0 for v in market_data['candles'].values()):
+                await self.send_message("❌ Chưa có dữ liệu nến. Vui lòng chờ bot thu thập data (khoảng 1-2 phút sau khi khởi động).")
                 return
             
             # Run prediction
@@ -510,13 +515,9 @@ Module phân tích và dự đoán hướng BTC
                 message = formatter.format_telegram_message(signal)
                 await self.send_message(message)
             else:
-                await self.send_message(
-                    "📊 <b>Không có tín hiệu rõ ràng</b>\n\n"
-                    "Điều kiện thị trường chưa đủ mạnh để đưa ra dự đoán.\n"
-                    "Thử lại sau hoặc chờ điều kiện tốt hơn."
-                )
+                await self.send_message("❌ Không thể phân tích. Kiểm tra logs để biết chi tiết.")
         except Exception as e:
-            logger.error(f"Prediction failed: {e}")
+            logger.error(f"Prediction failed: {e}", exc_info=True)
             await self.send_message(f"❌ Lỗi khi dự đoán: {str(e)}")
     
     async def cmd_last_predict(self):
