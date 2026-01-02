@@ -139,7 +139,7 @@ class SignalFormatter:
         return mapping.get(strength, "⭐")
     
     def _format_indicators(self, indicators: Dict[str, float]) -> str:
-        """Format indicators dictionary"""
+        """Format indicators dictionary with detailed annotations"""
         if not indicators:
             return "└── No indicator data"
         
@@ -150,50 +150,151 @@ class SignalFormatter:
             is_last = (i == len(indicator_names) - 1)
             prefix = "└──" if is_last else "├──"
             
-            # Format based on indicator type
+            # Format based on indicator type with detailed annotations
             if name == 'RSI':
-                status = self._get_rsi_status(value)
-                lines.append(f"{prefix} RSI: {value:.1f} ({status})")
+                signal, annotation = self._get_rsi_annotation(value)
+                lines.append(f"{prefix} RSI: {value:.1f} {signal}")
+                lines.append(f"    {annotation}")
             elif name == 'MACD':
-                status = "Bullish" if value > 0 else "Bearish" if value < 0 else "Neutral"
-                lines.append(f"{prefix} MACD: {status}")
+                signal, annotation = self._get_macd_annotation(value)
+                lines.append(f"{prefix} MACD: {signal}")
+                lines.append(f"    {annotation}")
             elif name == 'EMA':
                 lines.append(f"{prefix} EMA9: ${value:,.0f}")
+                lines.append(f"    📗 EMA9 > EMA21 > EMA50 = LONG")
+                lines.append(f"    📕 EMA9 < EMA21 < EMA50 = SHORT")
             elif name == 'BB':
-                lines.append(f"{prefix} BB Position: {value:.0f}%")
+                signal, annotation = self._get_bb_annotation(value)
+                lines.append(f"{prefix} BB: {value:.0f}% {signal}")
+                lines.append(f"    {annotation}")
             elif name == 'ADX':
-                status = self._get_adx_status(value)
-                lines.append(f"{prefix} ADX: {value:.1f} ({status})")
+                signal, annotation = self._get_adx_annotation(value)
+                lines.append(f"{prefix} ADX: {value:.1f} {signal}")
+                lines.append(f"    {annotation}")
             elif name == 'Funding':
-                lines.append(f"{prefix} Funding: {value:.4f}%")
+                signal, annotation = self._get_funding_annotation(value)
+                lines.append(f"{prefix} Funding: {value:.4f}% {signal}")
+                lines.append(f"    {annotation}")
             elif name == 'Volume':
-                lines.append(f"{prefix} Volume: {value:.1f}x avg")
+                signal, annotation = self._get_volume_annotation(value)
+                lines.append(f"{prefix} Volume: {value:.1f}x {signal}")
+                lines.append(f"    {annotation}")
+            elif name == 'Structure':
+                lines.append(f"{prefix} Structure: {value:.0f}")
+                lines.append(f"    📗 HH+HL (Higher High/Low) = LONG")
+                lines.append(f"    📕 LH+LL (Lower High/Low) = SHORT")
+            elif name == 'SR_Level':
+                signal, annotation = self._get_sr_annotation(value)
+                lines.append(f"{prefix} S/R Level: {value:.0f}% {signal}")
+                lines.append(f"    {annotation}")
+            elif name == 'LS_Ratio':
+                signal, annotation = self._get_ls_ratio_annotation(value)
+                lines.append(f"{prefix} L/S Ratio: {value:.2f} {signal}")
+                lines.append(f"    {annotation}")
+            elif name == 'OI_Change':
+                lines.append(f"{prefix} OI Change: {value:+.1f}%")
+                lines.append(f"    📗 OI↑ + Price↑ = LONG tiếp tục")
+                lines.append(f"    📕 OI↑ + Price↓ = SHORT tiếp tục")
             else:
                 lines.append(f"{prefix} {name}: {value:.2f}")
         
         return "\n".join(lines)
     
-    def _get_rsi_status(self, rsi: float) -> str:
-        """Get RSI status text"""
-        if rsi > 70:
-            return "Overbought"
-        elif rsi < 30:
-            return "Oversold"
-        elif rsi > 60:
-            return "High"
+    def _get_rsi_annotation(self, rsi: float) -> tuple:
+        """Get RSI signal and annotation"""
+        if rsi < 30:
+            return "🟢 LONG", "📗 RSI < 30 = Oversold → LONG | 📕 RSI > 70 = Overbought → SHORT"
         elif rsi < 40:
-            return "Low"
-        return "Neutral"
+            return "🟡 Gần LONG", "📗 RSI < 30 = Oversold → LONG | 📕 RSI > 70 = Overbought → SHORT"
+        elif rsi > 70:
+            return "🔴 SHORT", "📗 RSI < 30 = Oversold → LONG | 📕 RSI > 70 = Overbought → SHORT"
+        elif rsi > 60:
+            return "🟡 Gần SHORT", "📗 RSI < 30 = Oversold → LONG | 📕 RSI > 70 = Overbought → SHORT"
+        else:
+            return "⚪ Neutral", "📗 RSI < 30 = Oversold → LONG | 📕 RSI > 70 = Overbought → SHORT"
     
-    def _get_adx_status(self, adx: float) -> str:
-        """Get ADX trend status"""
-        if adx > 40:
-            return "Strong trend"
-        elif adx > 25:
-            return "Trending"
-        elif adx > 15:
-            return "Weak trend"
-        return "No trend"
+    def _get_macd_annotation(self, value: float) -> tuple:
+        """Get MACD signal and annotation"""
+        if value > 0:
+            return "🟢 Bullish", "📗 MACD > Signal + Histogram↑ = LONG | 📕 MACD < Signal + Histogram↓ = SHORT"
+        elif value < 0:
+            return "🔴 Bearish", "📗 MACD > Signal + Histogram↑ = LONG | 📕 MACD < Signal + Histogram↓ = SHORT"
+        else:
+            return "⚪ Neutral", "📗 MACD > Signal + Histogram↑ = LONG | 📕 MACD < Signal + Histogram↓ = SHORT"
+    
+    def _get_bb_annotation(self, value: float) -> tuple:
+        """Get Bollinger Bands signal and annotation"""
+        if value < 20:
+            return "🟢 LONG", "📗 BB < 20% (gần lower) = LONG | 📕 BB > 80% (gần upper) = SHORT"
+        elif value < 30:
+            return "🟡 Gần LONG", "📗 BB < 20% (gần lower) = LONG | 📕 BB > 80% (gần upper) = SHORT"
+        elif value > 80:
+            return "🔴 SHORT", "📗 BB < 20% (gần lower) = LONG | 📕 BB > 80% (gần upper) = SHORT"
+        elif value > 70:
+            return "🟡 Gần SHORT", "📗 BB < 20% (gần lower) = LONG | 📕 BB > 80% (gần upper) = SHORT"
+        else:
+            return "⚪ Middle", "📗 BB < 20% (gần lower) = LONG | 📕 BB > 80% (gần upper) = SHORT"
+    
+    def _get_adx_annotation(self, value: float) -> tuple:
+        """Get ADX signal and annotation"""
+        if value > 40:
+            return "💪 Strong Trend", "📊 ADX > 25 = Có trend | ADX < 20 = Sideway | ADX > 40 = Trend mạnh"
+        elif value > 25:
+            return "📈 Trending", "📊 ADX > 25 = Có trend | ADX < 20 = Sideway | ADX > 40 = Trend mạnh"
+        elif value > 15:
+            return "〰️ Weak", "📊 ADX > 25 = Có trend | ADX < 20 = Sideway | ADX > 40 = Trend mạnh"
+        else:
+            return "➖ No Trend", "📊 ADX > 25 = Có trend | ADX < 20 = Sideway | ADX > 40 = Trend mạnh"
+    
+    def _get_funding_annotation(self, value: float) -> tuple:
+        """Get Funding Rate signal and annotation (contrarian)"""
+        if value > 0.05:
+            return "🔴 SHORT", "📗 Funding < -0.05% = LONG (contrarian) | 📕 Funding > 0.05% = SHORT (contrarian)"
+        elif value > 0.01:
+            return "🟡 Gần SHORT", "📗 Funding < -0.05% = LONG (contrarian) | 📕 Funding > 0.05% = SHORT (contrarian)"
+        elif value < -0.05:
+            return "🟢 LONG", "📗 Funding < -0.05% = LONG (contrarian) | 📕 Funding > 0.05% = SHORT (contrarian)"
+        elif value < -0.01:
+            return "🟡 Gần LONG", "📗 Funding < -0.05% = LONG (contrarian) | 📕 Funding > 0.05% = SHORT (contrarian)"
+        else:
+            return "⚪ Neutral", "📗 Funding < -0.05% = LONG (contrarian) | 📕 Funding > 0.05% = SHORT (contrarian)"
+    
+    def _get_volume_annotation(self, value: float) -> tuple:
+        """Get Volume signal and annotation"""
+        if value > 1.5:
+            return "📊 High", "📊 Vol > 1.5x = Xác nhận trend | Vol < 0.5x = Không đáng tin"
+        elif value > 1.0:
+            return "📊 Normal", "📊 Vol > 1.5x = Xác nhận trend | Vol < 0.5x = Không đáng tin"
+        elif value > 0.5:
+            return "📉 Low", "📊 Vol > 1.5x = Xác nhận trend | Vol < 0.5x = Không đáng tin"
+        else:
+            return "⚠️ Very Low", "📊 Vol > 1.5x = Xác nhận trend | Vol < 0.5x = Không đáng tin"
+    
+    def _get_sr_annotation(self, value: float) -> tuple:
+        """Get Support/Resistance level annotation"""
+        if value < 20:
+            return "🟢 Gần Support", "📗 < 30% (gần support) = LONG | 📕 > 70% (gần resistance) = SHORT"
+        elif value < 40:
+            return "🟡 Lower Zone", "📗 < 30% (gần support) = LONG | 📕 > 70% (gần resistance) = SHORT"
+        elif value > 80:
+            return "🔴 Gần Resistance", "📗 < 30% (gần support) = LONG | 📕 > 70% (gần resistance) = SHORT"
+        elif value > 60:
+            return "🟡 Upper Zone", "📗 < 30% (gần support) = LONG | 📕 > 70% (gần resistance) = SHORT"
+        else:
+            return "⚪ Middle", "📗 < 30% (gần support) = LONG | 📕 > 70% (gần resistance) = SHORT"
+    
+    def _get_ls_ratio_annotation(self, value: float) -> tuple:
+        """Get Long/Short Ratio annotation (contrarian)"""
+        if value > 1.5:
+            return "🔴 SHORT", "📗 L/S < 0.7 = LONG (contrarian) | 📕 L/S > 1.5 = SHORT (contrarian)"
+        elif value > 1.2:
+            return "🟡 Gần SHORT", "📗 L/S < 0.7 = LONG (contrarian) | 📕 L/S > 1.5 = SHORT (contrarian)"
+        elif value < 0.67:
+            return "🟢 LONG", "📗 L/S < 0.7 = LONG (contrarian) | 📕 L/S > 1.5 = SHORT (contrarian)"
+        elif value < 0.8:
+            return "🟡 Gần LONG", "📗 L/S < 0.7 = LONG (contrarian) | 📕 L/S > 1.5 = SHORT (contrarian)"
+        else:
+            return "⚪ Balanced", "📗 L/S < 0.7 = LONG (contrarian) | 📕 L/S > 1.5 = SHORT (contrarian)"
     
     def _format_list(self, items: List[str], prefix: str = "•") -> str:
         """Format list items"""
