@@ -28,14 +28,15 @@ class VersionInfo:
 # Current version - UPDATE THIS AFTER EACH RELEASE
 CURRENT_VERSION = VersionInfo(
     major=5,
-    minor=1,
-    patch=1,
-    build_date="2026-01-01",
+    minor=2,
+    patch=0,
+    build_date="2026-01-02",
     changelog=[
-        "🔧 [OPTIMIZE] Bỏ REGIME CHANGE notification (quá nhiều noise)",
-        "🔧 [OPTIMIZE] Bot 1 chỉ gửi 2 loại: NEW SIGNAL + ERROR",
-        "🔧 [OPTIMIZE] Tập trung vào signal quality, không spam",
-        "✨ [NEW] Regime changes chỉ log nội bộ",
+        "✨ [NEW] BTC Direction Predictor module (independent)",
+        "✨ [NEW] /predict - Dự đoán hướng BTC ngay lập tức",
+        "✨ [NEW] /last_predict - Xem dự đoán gần nhất",
+        "✨ [NEW] Menu Predictor trong bot menu",
+        "🔮 Predictor chạy tự động mỗi 15 phút",
     ]
 )
 

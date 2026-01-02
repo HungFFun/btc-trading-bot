@@ -1,15 +1,18 @@
 """
 Telegram Command Handler for Bot 1 (Core Brain)
-Handles interactive commands: /status, /daily, /regime, /version
+Handles interactive commands: /status, /daily, /regime, /version, /predict
 """
 import asyncio
 import json
 import logging
 from datetime import datetime, date
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, TYPE_CHECKING
 import aiohttp
 
 from config.version import get_version, get_full_version, format_version_message, CURRENT_VERSION
+
+if TYPE_CHECKING:
+    from src.predictor import BTCDirectionPredictor
 
 logger = logging.getLogger(__name__)
 
@@ -17,13 +20,25 @@ logger = logging.getLogger(__name__)
 class TelegramCommandHandler:
     """Handle incoming Telegram commands for Core Brain bot"""
     
-    def __init__(self, token: str, chat_id: str, db_repository, feature_engine, regime_detector, enabled: bool = True):
+    def __init__(
+        self, 
+        token: str, 
+        chat_id: str, 
+        db_repository, 
+        feature_engine, 
+        regime_detector, 
+        enabled: bool = True,
+        predictor: "BTCDirectionPredictor" = None,
+        binance_client = None
+    ):
         self.token = token
         self.chat_id = chat_id
         self.db = db_repository
         self.feature_engine = feature_engine
         self.regime_detector = regime_detector
         self.enabled = enabled
+        self.predictor = predictor  # BTC Direction Predictor (independent)
+        self.binance = binance_client  # For getting market data
         self.base_url = f"https://api.telegram.org/bot{token}"
         self._session: Optional[aiohttp.ClientSession] = None
         self._last_update_id = 0
@@ -144,6 +159,14 @@ class TelegramCommandHandler:
         elif command == "/start" or command == "/menu":
             logger.info("Calling cmd_menu()")
             await self.cmd_menu()
+        elif command == "/predict":
+            await self.cmd_predict()
+        elif command == "/last_predict":
+            await self.cmd_last_predict()
+        elif command == "/predictor_on":
+            await self.cmd_predictor_toggle(True)
+        elif command == "/predictor_off":
+            await self.cmd_predictor_toggle(False)
         else:
             await self.send_message(f"❓ Unknown command: {command}\n\nUse /menu to see available commands.")
     
@@ -173,6 +196,17 @@ class TelegramCommandHandler:
             await self.cmd_help()
         elif data == "menu":
             await self.cmd_menu()
+        elif data == "predict":
+            await self.cmd_predict()
+        elif data == "last_predict":
+            await self.cmd_last_predict()
+        elif data == "predictor_toggle":
+            if self.predictor:
+                await self.cmd_predictor_toggle(not self.predictor.is_enabled)
+            else:
+                await self.send_message("❌ Predictor chưa được khởi tạo")
+        elif data == "predictor_menu":
+            await self.cmd_predictor_menu()
     
     async def cmd_menu(self):
         """Show interactive menu with inline buttons"""
@@ -187,6 +221,7 @@ class TelegramCommandHandler:
                     {"text": "📦 Version", "callback_data": "version"}
                 ],
                 [
+                    {"text": "🔮 Predictor", "callback_data": "predictor_menu"},
                     {"text": "❓ Help", "callback_data": "help"}
                 ]
             ]
@@ -404,28 +439,195 @@ class TelegramCommandHandler:
             logger.error(f"Error in cmd_version: {e}")
             await self.send_message(f"❌ Error fetching version: {str(e)}")
     
+    async def cmd_predictor_menu(self):
+        """Show predictor sub-menu"""
+        predictor_status = "🟢 ON" if (self.predictor and self.predictor.is_enabled) else "🔴 OFF"
+        toggle_text = "🔴 Tắt Predictor" if (self.predictor and self.predictor.is_enabled) else "🟢 Bật Predictor"
+        
+        keyboard = {
+            "inline_keyboard": [
+                [
+                    {"text": "🔮 Dự đoán ngay", "callback_data": "predict"}
+                ],
+                [
+                    {"text": "📊 Dự đoán gần nhất", "callback_data": "last_predict"}
+                ],
+                [
+                    {"text": toggle_text, "callback_data": "predictor_toggle"}
+                ],
+                [
+                    {"text": "⬅️ Quay lại Menu", "callback_data": "menu"}
+                ]
+            ]
+        }
+        
+        message = f"""
+🔮 <b>BTC Direction Predictor</b>
+═══════════════════════════
+
+<b>Status:</b> {predictor_status}
+
+<b>Predictor là gì?</b>
+Module phân tích và dự đoán hướng BTC 
+(LONG/SHORT) dựa trên:
+├── Technical: RSI, MACD, EMA, BB, ADX
+├── Structure: Support/Resistance
+└── Sentiment: Funding, L/S Ratio
+
+⚡ <b>Chỉ là GỢI Ý - Không tự động trade</b>
+
+<b>Chọn một tùy chọn:</b>
+"""
+        await self.send_message(message.strip(), reply_markup=keyboard)
+    
+    async def cmd_predict(self):
+        """Generate prediction now"""
+        if not self.predictor:
+            await self.send_message("❌ Predictor chưa được khởi tạo. Vui lòng khởi động lại bot.")
+            return
+        
+        if not self.predictor.is_enabled:
+            await self.send_message("⚠️ Predictor đang tắt. Bật lại bằng lệnh /predictor_on")
+            return
+        
+        await self.send_message("🔮 Đang phân tích thị trường...")
+        
+        try:
+            # Get market data
+            market_data = await self._get_market_data_for_predictor()
+            
+            if not market_data:
+                await self.send_message("❌ Không thể lấy dữ liệu thị trường")
+                return
+            
+            # Run prediction
+            signal = await self.predictor.predict(market_data)
+            
+            if signal:
+                # Format and send
+                from src.predictor.signal_formatter import SignalFormatter
+                formatter = SignalFormatter({})
+                message = formatter.format_telegram_message(signal)
+                await self.send_message(message)
+            else:
+                await self.send_message(
+                    "📊 <b>Không có tín hiệu rõ ràng</b>\n\n"
+                    "Điều kiện thị trường chưa đủ mạnh để đưa ra dự đoán.\n"
+                    "Thử lại sau hoặc chờ điều kiện tốt hơn."
+                )
+        except Exception as e:
+            logger.error(f"Prediction failed: {e}")
+            await self.send_message(f"❌ Lỗi khi dự đoán: {str(e)}")
+    
+    async def cmd_last_predict(self):
+        """Show last prediction"""
+        if not self.predictor:
+            await self.send_message("❌ Predictor chưa được khởi tạo")
+            return
+        
+        last_signal = self.predictor.get_last_prediction()
+        
+        if not last_signal:
+            await self.send_message("📊 Chưa có dự đoán nào. Sử dụng /predict để tạo mới.")
+            return
+        
+        # Format and send
+        from src.predictor.signal_formatter import SignalFormatter
+        formatter = SignalFormatter({})
+        message = formatter.format_telegram_message(last_signal)
+        
+        # Add note about when it was generated
+        time_diff = datetime.utcnow() - last_signal.timestamp
+        minutes_ago = int(time_diff.total_seconds() / 60)
+        
+        message += f"\n\n⏱️ <i>Dự đoán từ {minutes_ago} phút trước</i>"
+        
+        await self.send_message(message)
+    
+    async def cmd_predictor_toggle(self, enable: bool):
+        """Toggle predictor on/off"""
+        if not self.predictor:
+            await self.send_message("❌ Predictor chưa được khởi tạo")
+            return
+        
+        if enable:
+            self.predictor.enable()
+            await self.send_message("🟢 Predictor đã được <b>BẬT</b>")
+        else:
+            self.predictor.disable()
+            await self.send_message("🔴 Predictor đã được <b>TẮT</b>")
+    
+    async def _get_market_data_for_predictor(self) -> Optional[Dict[str, Any]]:
+        """Get market data for predictor - independent from core logic"""
+        try:
+            # Try to get data from binance client
+            if self.binance:
+                data = self.binance.get_data()
+                if data and data.last_price:
+                    # Convert to predictor format
+                    candles = []
+                    for tf, klines in data.klines.items():
+                        if klines:
+                            candles = [
+                                {
+                                    'open': k.open,
+                                    'high': k.high,
+                                    'low': k.low,
+                                    'close': k.close,
+                                    'volume': k.volume
+                                }
+                                for k in klines
+                            ]
+                            break
+                    
+                    return {
+                        'current_price': data.last_price,
+                        'candles': {'5m': candles} if candles else {},
+                        'funding_rate': getattr(data, 'funding_rate', 0),
+                        'long_short_ratio': getattr(data, 'long_short_ratio', None),
+                        'oi_change_pct': getattr(data, 'oi_change_pct', None),
+                        'price_change_pct': getattr(data, 'price_change_24h', None)
+                    }
+            
+            # Fallback: use feature engine
+            if self.feature_engine and self.feature_engine.latest_features:
+                features = self.feature_engine.latest_features
+                return {
+                    'current_price': features.get('close', 0),
+                    'candles': {},  # Would need to be populated
+                    'funding_rate': features.get('funding_rate', 0)
+                }
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"Failed to get market data for predictor: {e}")
+            return None
+    
     async def cmd_help(self):
         """Handle /help command"""
         message = f"""
 🤖 <b>Core Brain Bot Commands</b>
 ═══════════════════════════
 
-<b>Available Commands:</b>
+<b>📊 Trading Commands:</b>
 
-📊 <b>/status</b>
-└── Current bot status and market overview
+/status - Trạng thái bot
+/daily - Kết quả hôm nay
+/regime - Phân tích regime
 
-📅 <b>/daily</b>
-└── Today's trading state (PnL, trades, etc.)
+<b>🔮 Predictor Commands:</b>
 
-📈 <b>/regime</b>
-└── Current market regime analysis
+/predict - Dự đoán ngay
+/last_predict - Xem dự đoán gần nhất
+/predictor_on - Bật predictor
+/predictor_off - Tắt predictor
 
-📦 <b>/version</b>
-└── Show bot version and changelog
+<b>📱 Other Commands:</b>
 
-❓ <b>/help</b>
-└── Show this help message
+/menu - Menu chính
+/version - Phiên bản bot
+/help - Trợ giúp
 
 ───────────────────────────
 🤖 Bot 1: Core Brain
@@ -443,6 +645,8 @@ class TelegramCommandHandler:
             {"command": "status", "description": "📊 Trạng thái bot"},
             {"command": "daily", "description": "📅 Kết quả hôm nay"},
             {"command": "regime", "description": "📈 Phân tích regime"},
+            {"command": "predict", "description": "🔮 Dự đoán BTC"},
+            {"command": "last_predict", "description": "📊 Dự đoán gần nhất"},
             {"command": "version", "description": "📦 Phiên bản bot"},
             {"command": "help", "description": "❓ Trợ giúp"},
         ]

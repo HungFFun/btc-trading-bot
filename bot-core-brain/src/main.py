@@ -24,6 +24,7 @@ from src.learning.learning_engine import LearningEngine, TradeResult
 from src.database.repository import DatabaseRepository
 from src.telegram.bot import TelegramBot
 from src.telegram.command_handler import TelegramCommandHandler
+from src.predictor import BTCDirectionPredictor
 
 # Configure logging
 logging.basicConfig(
@@ -109,6 +110,9 @@ class CoreBrainBot:
             enabled=settings.telegram.ENABLED
         )
         
+        # ★ BTC Direction Predictor (INDEPENDENT module) ★
+        self.predictor = self._init_predictor()
+        
         # Telegram command handler (interactive commands)
         self.telegram_commands = TelegramCommandHandler(
             token=settings.telegram.TOKEN,
@@ -116,7 +120,9 @@ class CoreBrainBot:
             db_repository=self.db,
             feature_engine=self.features,
             regime_detector=self.regime_detector,
-            enabled=settings.telegram.ENABLED
+            enabled=settings.telegram.ENABLED,
+            predictor=self.predictor,  # Pass predictor for /predict commands
+            binance_client=self.binance  # Pass binance for market data
         )
         
         # State
@@ -124,6 +130,76 @@ class CoreBrainBot:
         self._last_regime = None
         self._current_date = None
         self._command_task = None
+        self._predictor_task = None  # Task for periodic predictions
+    
+    def _init_predictor(self) -> BTCDirectionPredictor:
+        """Initialize the BTC Direction Predictor (independent module)"""
+        import yaml
+        from pathlib import Path
+        
+        config_path = Path(__file__).parent.parent / "config" / "predictor_config.yaml"
+        
+        try:
+            if config_path.exists():
+                with open(config_path, 'r') as f:
+                    config = yaml.safe_load(f).get('predictor', {})
+            else:
+                # Default config
+                config = {
+                    'enabled': True,
+                    'thresholds': {'min_confidence': 60, 'min_score': 30},
+                    'entry': {'position_size_usd': 150, 'leverage': 20, 'tp_percent': 0.50, 'sl_percent': 0.25},
+                    'weights': {'technical': 0.40, 'structure': 0.20, 'sentiment': 0.25, 'onchain': 0.15},
+                    'telegram': {'enabled': True, 'send_neutral': False}
+                }
+            
+            predictor = BTCDirectionPredictor(
+                config=config,
+                telegram_bot=self.telegram,
+                enabled=config.get('enabled', True)
+            )
+            logger.info(f"🔮 BTC Direction Predictor initialized (v{predictor.VERSION})")
+            return predictor
+            
+        except Exception as e:
+            logger.error(f"Failed to init predictor: {e}")
+            # Return disabled predictor
+            return BTCDirectionPredictor(config={}, telegram_bot=None, enabled=False)
+    
+    async def _get_market_data_for_predictor(self) -> dict:
+        """Get market data in format suitable for predictor"""
+        try:
+            data = self.binance.get_data()
+            
+            if not data or not data.last_price:
+                return None
+            
+            # Convert klines to predictor format
+            candles = {}
+            for tf, klines in data.klines.items():
+                if klines:
+                    candles[tf] = [
+                        {
+                            'open': k.open,
+                            'high': k.high,
+                            'low': k.low,
+                            'close': k.close,
+                            'volume': k.volume
+                        }
+                        for k in klines
+                    ]
+            
+            return {
+                'current_price': data.last_price,
+                'candles': candles,
+                'funding_rate': getattr(data, 'funding_rate', 0),
+                'long_short_ratio': getattr(data, 'long_short_ratio', None),
+                'oi_change_pct': getattr(data, 'oi_change_pct', None),
+                'price_change_pct': getattr(data, 'price_change_24h', None)
+            }
+        except Exception as e:
+            logger.error(f"Failed to get market data for predictor: {e}")
+            return None
     
     async def start(self):
         """Start the bot"""
@@ -146,6 +222,16 @@ class CoreBrainBot:
         # Start Telegram command handler
         self._command_task = asyncio.create_task(self.telegram_commands.start_polling())
         logger.info("✅ Telegram command handler started")
+        
+        # Start Predictor periodic task (independent)
+        if self.predictor and self.predictor.is_enabled:
+            self._predictor_task = asyncio.create_task(
+                self.predictor.run_periodic(
+                    self._get_market_data_for_predictor,
+                    interval_minutes=15
+                )
+            )
+            logger.info("🔮 Predictor periodic task started (every 15 min)")
         
         # Wait for initial data
         await asyncio.sleep(5)
@@ -175,6 +261,15 @@ class CoreBrainBot:
                 await self._command_task
             except asyncio.CancelledError:
                 pass
+        
+        # Stop predictor task
+        if self._predictor_task:
+            self._predictor_task.cancel()
+            try:
+                await self._predictor_task
+            except asyncio.CancelledError:
+                pass
+            logger.info("🔮 Predictor task stopped")
         
         await self.binance.disconnect()
         await self.features.close()
@@ -437,6 +532,8 @@ class CoreBrainBot:
         """Send startup message with interactive menu buttons"""
         logger.info("=== SENDING STARTUP MENU ===")
         
+        predictor_status = "🟢" if (self.predictor and self.predictor.is_enabled) else "🔴"
+        
         keyboard = {
             "inline_keyboard": [
                 [
@@ -448,6 +545,7 @@ class CoreBrainBot:
                     {"text": "📦 Version", "callback_data": "version"},
                 ],
                 [
+                    {"text": f"🔮 Predictor {predictor_status}", "callback_data": "predictor_menu"},
                     {"text": "❓ Help", "callback_data": "help"},
                 ],
             ]
@@ -461,6 +559,7 @@ class CoreBrainBot:
 
 📦 Version: <code>{get_full_version()}</code>
 ⏰ Time: {datetime.utcnow().strftime('%H:%M:%S')} UTC
+🔮 Predictor: {predictor_status}
 
 <b>Chọn một tùy chọn bên dưới:</b>
 """

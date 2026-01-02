@@ -27,4 +27,5 @@ ta-lib>=0.4.25  # Requires system TA-Lib
 # Utilities
 python-dateutil>=2.8.0
 pytz>=2023.3
+pyyaml>=6.0.0
 

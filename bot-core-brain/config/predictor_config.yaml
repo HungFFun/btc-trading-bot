@@ -1,0 +1,41 @@
+# BTC Direction Predictor Configuration
+# ★ INDEPENDENT MODULE CONFIG ★
+
+predictor:
+  # Enable/disable predictor
+  enabled: true
+  
+  # Periodic prediction schedule
+  schedule:
+    interval_minutes: 15
+    timezone: "UTC"
+  
+  # Minimum thresholds for prediction
+  thresholds:
+    min_confidence: 60    # Minimum confidence to generate signal
+    min_score: 30         # Minimum absolute score
+  
+  # Entry parameters
+  entry:
+    position_size_usd: 150
+    leverage: 20
+    tp_percent: 0.50      # Take profit percentage
+    sl_percent: 0.25      # Stop loss percentage
+  
+  # Analyzer weights (must sum to 1.0)
+  weights:
+    technical: 0.40       # RSI, MACD, EMA, BB, ADX
+    structure: 0.20       # Support/Resistance, Price patterns
+    sentiment: 0.25       # Funding, Long/Short ratio
+    onchain: 0.15         # Future: on-chain metrics
+  
+  # Telegram notification settings
+  telegram:
+    enabled: true
+    send_neutral: false   # Don't send NEUTRAL signals
+  
+  # Risk management
+  risk:
+    max_daily_predictions: 20
+    cooldown_minutes: 5   # Minimum time between predictions
+
